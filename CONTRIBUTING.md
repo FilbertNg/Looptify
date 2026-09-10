@@ -39,6 +39,7 @@ manual verification scripts instead:
 ```bash
 python scripts/verify_smtc.py     # read-only; watch position extrapolation work
 python scripts/verify_hotkey.py   # press the hotkey, confirm it fires
+python scripts/verify_audio.py    # mutes and unmutes Spotify, and times it
 ```
 
 If you change timing behaviour, please add a case to `tests/test_logic.py` alongside
