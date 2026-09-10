@@ -17,14 +17,13 @@
 ## Demo
 
 <!--
-  To show an inline video player instead of the link below:
-  open a new GitHub issue on this repo, drag docs/assets/demo.mp4 into the
-  comment box, wait for it to upload, then paste the resulting
-  https://github.com/user-attachments/... URL here on its own line.
-  GitHub renders that as a real player. Relative .mp4 paths do not work.
+  Keep the URL below bare and on its own line with blank lines around it —
+  that is what makes GitHub render it as a video player. Don't wrap it in
+  markdown link syntax, and don't swap it for docs/assets/demo.mp4:
+  relative .mp4 paths don't play in a README.
 -->
 
-**[▶ Watch the demo](docs/assets/demo.mp4)** — armed, counting down, looping at the boundary.
+https://github.com/user-attachments/assets/9acd9d54-cf90-491f-a1ac-6bf748493e27
 
 ```console
 Looptify — ctrl+alt+l to arm/disarm. Ctrl+C or close this window to quit.
