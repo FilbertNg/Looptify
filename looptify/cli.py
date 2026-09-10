@@ -9,7 +9,7 @@ import threading
 import time
 
 from looptify.audio import set_spotify_muted
-from looptify.config import load_config
+from looptify.config import Config, load_config
 from looptify.console import enable_unicode_output
 from looptify.hotkey import HotkeyListener
 from looptify.logic import Decision, LooperState, evaluate
@@ -46,6 +46,18 @@ def _status_line(
         f"{_format_time(decision.est_position)}/{_format_time(snap.duration)} "
         f"{countdown}"
     )
+
+
+def _describe_ad_detection(cfg: Config) -> str:
+    """Say which ad rules are live, so the banner can't misreport them."""
+    rules = []
+    if cfg.ad_markers:
+        rules.append(f"artist in {list(cfg.ad_markers)}")
+    if cfg.detect_ads_by_structure:
+        rules.append(f"no album/track and under {cfg.ad_max_duration_seconds:g}s")
+    if not rules:
+        return "OFF (no rules enabled in config.toml)"
+    return "ON — " + " or ".join(rules)
 
 
 async def run() -> int:
@@ -86,8 +98,7 @@ async def run() -> int:
     set_spotify_muted(False)
 
     print(f"Looptify — press {cfg.hotkey} to arm/disarm, Ctrl+C to quit.")
-    if not cfg.ad_markers:
-        print("Ad muting is OFF (ad_markers is empty in config.toml).")
+    print(f"Ad muting: {_describe_ad_detection(cfg)}")
     print()
 
     muted = False
