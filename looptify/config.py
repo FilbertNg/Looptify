@@ -17,7 +17,7 @@ class Config:
     max_drift_seconds: float = 10.0
     poll_interval: float = 0.15
     hotkey: str = "ctrl+alt+l"
-    quit_hotkey: str = "ctrl+alt+q"
+    start_armed: bool = True
     show_notifications: bool = True
     notification_seconds: float = 3.0
     ad_markers: tuple[str, ...] = ("Spotify",)

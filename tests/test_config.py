@@ -13,7 +13,7 @@ def test_defaults_match_measured_behaviour():
     assert cfg.max_drift_seconds == 10.0
     assert cfg.poll_interval == 0.15
     assert cfg.hotkey == "ctrl+alt+l"
-    assert cfg.quit_hotkey == "ctrl+alt+q"
+    assert cfg.start_armed is True
     assert cfg.show_notifications is True
     assert cfg.notification_seconds == 3.0
     assert cfg.ad_markers == ("Spotify",)
@@ -53,6 +53,12 @@ def test_lead_must_be_positive(tmp_path: Path):
     p.write_text("lead_seconds = -1\n", encoding="utf-8")
     with pytest.raises(ValueError, match="lead_seconds"):
         load_config(p)
+
+
+def test_start_armed_can_be_turned_off(tmp_path: Path):
+    p = tmp_path / "config.toml"
+    p.write_text("start_armed = false\n", encoding="utf-8")
+    assert load_config(p).start_armed is False
 
 
 def test_ad_detection_can_be_turned_off_entirely(tmp_path: Path):

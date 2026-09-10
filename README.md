@@ -58,22 +58,25 @@ python -m looptify
 
 or double-click `run.bat`.
 
+**Looptify starts armed**, so whatever is playing begins looping straight away.
+
 | | |
 |---|---|
 | **Ctrl+Alt+L** | Arm / disarm. Works even when Looptify isn't the focused window. |
-| **Ctrl+Alt+Q** | Quit. Also works from anywhere. |
-| **Ctrl+C**, or closing the window | Also quits, cleanly. |
+| **Ctrl+C**, or closing the window | Quit, cleanly. |
 
-Each time you arm or disarm, a notification fades in at the corner of the screen —
-**Looptify Activated** or **Looptify Deactivated** — holds for three seconds, then
-fades out. Since Looptify otherwise runs silently in the background, that's usually
-the only way to tell what state it's in. Press the hotkey again while one is showing
-and it exits early to make way for the new one, so the notification always reflects
-the current state.
+Each time you arm or disarm — and once at startup — a notification fades in at the
+corner of the screen, **Looptify Activated** or **Looptify Deactivated**, holds for
+three seconds, then fades out. Since Looptify otherwise runs silently in the
+background, that's usually the only way to tell what state it's in. Press the hotkey
+again while one is showing and it exits early to make way for the new one, so the
+notification always reflects the current state.
 
-**IDLE** means Looptify is watching but doing nothing — tracks play out normally.
 **ARMED** means the current song will loop indefinitely, and a countdown to the next
 loop appears. Skip to a different song while armed and it loops that one instead.
+**IDLE** means Looptify is watching but doing nothing — tracks play out normally.
+
+If you'd rather start idle, set `start_armed = false` in `config.toml`.
 
 ## Configuration
 
@@ -87,7 +90,7 @@ Edit `config.toml`. Delete any line to use its default.
 | `max_drift_seconds` | `10.0` | Ignore playback data staler than this |
 | `poll_interval` | `0.15` | How often to check, in seconds |
 | `hotkey` | `"ctrl+alt+l"` | Arm/disarm key. Modifiers: `ctrl`, `alt`, `shift`, `win` |
-| `quit_hotkey` | `"ctrl+alt+q"` | Quit key |
+| `start_armed` | `true` | Begin looping as soon as Looptify opens |
 | `show_notifications` | `true` | Show the on-screen arm/disarm notification |
 | `notification_seconds` | `3.0` | How long it holds, excluding fades |
 | `ad_markers` | `["Spotify"]` | Artist names identifying an ad, matched exactly |

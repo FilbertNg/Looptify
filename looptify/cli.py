@@ -76,9 +76,8 @@ async def run() -> int:
         print(f"Config error: {exc}", file=sys.stderr)
         return 2
 
-    state = LooperState(armed=False)
+    state = LooperState(armed=cfg.start_armed)
     state_lock = threading.Lock()
-    quit_requested = threading.Event()
 
     toaster = ToastNotifier(
         enabled=cfg.show_notifications, seconds=cfg.notification_seconds
@@ -108,13 +107,8 @@ async def run() -> int:
                 positive=False,
             )
 
-    def request_quit() -> None:
-        quit_requested.set()
-
     try:
-        listener = HotkeyListener(
-            {cfg.hotkey: toggle, cfg.quit_hotkey: request_quit}
-        )
+        listener = HotkeyListener({cfg.hotkey: toggle})
         listener.start()
     except (RuntimeError, ValueError) as exc:
         print(f"Hotkey error: {exc}", file=sys.stderr)
@@ -139,18 +133,28 @@ async def run() -> int:
 
     on_console_close(emergency_cleanup)
 
-    print(f"Looptify — {cfg.hotkey} to arm/disarm, {cfg.quit_hotkey} to quit.")
+    print(
+        f"Looptify — {cfg.hotkey} to arm/disarm. "
+        f"Ctrl+C or close this window to quit."
+    )
     print(f"Ad muting: {_describe_ad_detection(cfg)}")
     if not toaster.active and cfg.show_notifications:
         print("Notifications unavailable (tkinter could not start).")
     print()
 
+    # Looptify starts armed by default, so say so — otherwise the one moment
+    # the user most needs to know its state is the one moment it stays silent.
+    if state.armed:
+        toaster.show(
+            "Looptify Activated",
+            "This song will loop before it ends.",
+            positive=True,
+        )
+
     consecutive_errors = 0
 
     try:
         while True:
-            if quit_requested.is_set():
-                return 0
             try:
                 snap = await monitor.snapshot()
 

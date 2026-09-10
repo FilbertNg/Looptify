@@ -70,11 +70,13 @@ def test_listener_validates_every_spec_before_starting():
 
 
 def test_listener_assigns_a_distinct_id_per_binding():
+    # Looptify itself only binds one key, but ids must stay distinct so a
+    # second binding dispatches to the right callback rather than the first.
     listener = HotkeyListener(
-        {"ctrl+alt+l": lambda: None, "ctrl+alt+q": lambda: None}
+        {"ctrl+alt+l": lambda: None, "ctrl+shift+f7": lambda: None}
     )
     ids = list(listener._bindings)
     assert len(ids) == 2
     assert len(set(ids)) == 2
     specs = [b[0] for b in listener._bindings.values()]
-    assert specs == ["ctrl+alt+l", "ctrl+alt+q"]
+    assert specs == ["ctrl+alt+l", "ctrl+shift+f7"]

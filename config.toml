@@ -26,9 +26,9 @@ poll_interval = 0.15
 # Global hotkey to arm/disarm. Modifiers: ctrl, alt, shift, win.
 hotkey = "ctrl+alt+l"
 
-# Global hotkey to quit Looptify, so you never have to hunt for the window.
-# Closing the console window also shuts down cleanly.
-quit_hotkey = "ctrl+alt+q"
+# Start already armed, so opening Looptify immediately loops whatever is
+# playing. Set to false if you would rather arm it yourself each time.
+start_armed = true
 
 # Show an on-screen notification when you arm or disarm. Since Looptify runs
 # in the background, this is usually the only way to tell what state it is in.

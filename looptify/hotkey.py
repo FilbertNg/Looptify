@@ -67,8 +67,9 @@ def parse_hotkey(spec: str) -> tuple[int, int]:
 class HotkeyListener:
     """Runs callbacks when any of its hotkeys is pressed, from its own thread.
 
-    Takes a mapping of hotkey spec to callback, e.g.
-    ``{"ctrl+alt+l": toggle, "ctrl+alt+q": quit}``.
+    Takes a mapping of hotkey spec to callback, e.g. ``{"ctrl+alt+l": toggle}``.
+    Extra bindings cost a table entry rather than another thread, since they
+    all share this listener's message pump.
     """
 
     def __init__(self, bindings: Mapping[str, Callable[[], None]]) -> None:
