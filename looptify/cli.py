@@ -17,6 +17,11 @@ from looptify.models import Snapshot
 from looptify.smtc import SpotifyMonitor
 
 
+# How many consecutive poll failures to tolerate before giving up. Transient
+# nulls from the Windows media API are survivable; a persistent fault is not.
+MAX_CONSECUTIVE_ERRORS = 20
+
+
 def _format_time(seconds: float) -> str:
     if seconds < 0 or seconds == float("inf"):
         return "--:--"
@@ -104,65 +109,89 @@ async def run() -> int:
     muted = False
     last_track: tuple[str, str] | None = None
 
+    consecutive_errors = 0
+
     try:
         while True:
-            snap = await monitor.snapshot()
+            try:
+                snap = await monitor.snapshot()
 
-            if snap is None:
+                if snap is None:
+                    with state_lock:
+                        current = state
+                    sys.stdout.write(
+                        "\r" + _status_line(current, None, None).ljust(110)
+                    )
+                    sys.stdout.flush()
+                    await asyncio.sleep(cfg.poll_interval)
+                    continue
+
                 with state_lock:
                     current = state
+                decision = evaluate(
+                    snap,
+                    current,
+                    cfg,
+                    dt.datetime.now(dt.timezone.utc),
+                    time.monotonic(),
+                )
+                with state_lock:
+                    # Preserve an arm/disarm that landed during evaluation.
+                    state = LooperState(
+                        armed=state.armed,
+                        awaiting_restart=decision.state.awaiting_restart,
+                        last_fire_monotonic=decision.state.last_fire_monotonic,
+                    )
+                    current = state
+
+                if cfg.log_tracks:
+                    track = (snap.title, snap.artist)
+                    if track != last_track:
+                        last_track = track
+                        print(
+                            f"\n[track] title={snap.title!r} "
+                            f"artist={snap.artist!r} album={snap.album!r} "
+                            f"track_number={snap.track_number} "
+                            f"duration={snap.duration:.3f}"
+                        )
+
+                if decision.should_mute and not muted:
+                    count = set_spotify_muted(True)
+                    muted = True
+                    print(
+                        f"\n[mute] ad detected ({snap.artist!r}) — muted "
+                        f"{count} session(s)"
+                    )
+                elif not decision.should_mute and muted:
+                    count = set_spotify_muted(False)
+                    muted = False
+                    print(f"\n[mute] ad over — unmuted {count} session(s)")
+
+                if decision.fire_loop:
+                    method = await monitor.loop_now()
+                    print(f"\n[loop] restarted via {method}")
+
                 sys.stdout.write(
-                    "\r" + _status_line(current, None, None).ljust(110)
+                    "\r" + _status_line(current, snap, decision).ljust(110)
                 )
                 sys.stdout.flush()
-                await asyncio.sleep(cfg.poll_interval)
-                continue
+                consecutive_errors = 0
 
-            with state_lock:
-                current = state
-            decision = evaluate(
-                snap,
-                current,
-                cfg,
-                dt.datetime.now(dt.timezone.utc),
-                time.monotonic(),
-            )
-            with state_lock:
-                # Preserve an arm/disarm that landed during evaluation.
-                state = LooperState(
-                    armed=state.armed,
-                    awaiting_restart=decision.state.awaiting_restart,
-                    last_fire_monotonic=decision.state.last_fire_monotonic,
-                )
-                current = state
-
-            if cfg.log_tracks:
-                track = (snap.title, snap.artist)
-                if track != last_track:
-                    last_track = track
-                    print(
-                        f"\n[track] title={snap.title!r} artist={snap.artist!r} "
-                        f"album={snap.album!r} duration={snap.duration:.3f}"
-                    )
-
-            if decision.should_mute and not muted:
-                count = set_spotify_muted(True)
-                muted = True
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                raise
+            except Exception as exc:
+                # Looptify is meant to run unattended for hours, so one bad
+                # frame from a Windows API must not end the session. Bounded,
+                # so a genuinely broken state still stops rather than spinning.
+                consecutive_errors += 1
                 print(
-                    f"\n[mute] ad detected ({snap.artist!r}) — muted "
-                    f"{count} session(s)"
+                    f"\n[warn] poll failed "
+                    f"({consecutive_errors}/{MAX_CONSECUTIVE_ERRORS}): {exc!r}"
                 )
-            elif not decision.should_mute and muted:
-                count = set_spotify_muted(False)
-                muted = False
-                print(f"\n[mute] ad over — unmuted {count} session(s)")
+                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                    print("[error] too many consecutive failures — stopping.")
+                    return 1
 
-            if decision.fire_loop:
-                method = await monitor.loop_now()
-                print(f"\n[loop] restarted via {method}")
-
-            sys.stdout.write("\r" + _status_line(current, snap, decision).ljust(110))
-            sys.stdout.flush()
             await asyncio.sleep(cfg.poll_interval)
 
     except KeyboardInterrupt:

@@ -70,8 +70,22 @@ class SpotifyMonitor:
             self._session = None
             return None
 
-        duration = timeline.end_time.total_seconds()
-        position = timeline.position.total_seconds()
+        # These are documented as non-null but WinRT returns null in practice
+        # while a session is tearing down or between tracks. Observed live:
+        # get_timeline_properties() returned None and crashed the poll loop.
+        if timeline is None or playback is None:
+            self._session = None
+            return None
+
+        controls = playback.controls
+        end_time = timeline.end_time
+        position_delta = timeline.position
+        last_updated = timeline.last_updated_time
+        if end_time is None or position_delta is None or last_updated is None:
+            return None
+
+        duration = end_time.total_seconds()
+        position = position_delta.total_seconds()
         is_playing = playback.playback_status == PlaybackStatus.PLAYING
 
         # Refresh title/artist/album on a slower cadence, or immediately when
@@ -92,8 +106,8 @@ class SpotifyMonitor:
             is_playing=is_playing,
             position=position,
             duration=duration,
-            last_updated=timeline.last_updated_time,
-            can_seek=bool(playback.controls.is_playback_position_enabled),
+            last_updated=last_updated,
+            can_seek=bool(controls is not None and controls.is_playback_position_enabled),
         )
 
     @staticmethod
@@ -101,6 +115,8 @@ class SpotifyMonitor:
         try:
             info = await session.try_get_media_properties_async()
         except OSError:
+            return ("", "", "", 0)
+        if info is None:
             return ("", "", "", 0)
         return (
             info.title or "",
@@ -121,7 +137,9 @@ class SpotifyMonitor:
 
         session = self._session
         try:
-            if session.get_playback_info().controls.is_playback_position_enabled:
+            playback = session.get_playback_info()
+            controls = playback.controls if playback is not None else None
+            if controls is not None and controls.is_playback_position_enabled:
                 if await session.try_change_playback_position_async(0):
                     return "seek"
             if await session.try_skip_previous_async():
