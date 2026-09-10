@@ -26,10 +26,18 @@ poll_interval = 0.15
 # Global hotkey to arm/disarm. Modifiers: ctrl, alt, shift, win.
 hotkey = "ctrl+alt+l"
 
-# Substrings that identify an ad in the track title, artist, or album
+# Artist names that identify an ad. Matched against the ARTIST field exactly
 # (case-insensitive). EMPTY MEANS AD MUTING IS OFF and nothing is ever muted.
-# Populate this only from real captured data — see log_tracks below.
-ad_markers = []
+#
+# "Spotify" comes from real captured ads. Note the matching is on the artist
+# and is exact, both deliberately: ad TITLES vary per campaign and language
+# (two captured in one break were 'Dengarkan musik tanpa iklan.' and 'Nikmati
+# musik tanpa iklan.'), while the artist stays "Spotify". Exact matching is
+# what stops a legitimate "Spotify Singles" release from being muted.
+#
+# If your client reports ads differently, set log_tracks below and add what
+# you actually see.
+ad_markers = ["Spotify"]
 
 # Log every track change with its full SMTC fields, so you can capture what a
 # real ad looks like and fill in ad_markers above.

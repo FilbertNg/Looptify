@@ -79,7 +79,7 @@ Edit `config.toml`. Delete any line to use its default.
 | `max_drift_seconds` | `10.0` | Ignore playback data staler than this |
 | `poll_interval` | `0.15` | How often to check, in seconds |
 | `hotkey` | `"ctrl+alt+l"` | Arm/disarm key. Modifiers: `ctrl`, `alt`, `shift`, `win` |
-| `ad_markers` | `[]` | Substrings identifying an ad. **Empty means ad muting is off** |
+| `ad_markers` | `["Spotify"]` | Artist names identifying an ad, matched exactly. **Empty disables muting** |
 | `log_tracks` | `false` | Log every track change with its raw media fields |
 
 > **Using Crossfade?** If you have Crossfade enabled in Spotify (Settings →
@@ -88,16 +88,31 @@ Edit `config.toml`. Delete any line to use its default.
 
 ### Ad muting
 
-Looptify can mute Spotify while an ad plays. It ships **off**, because muting
-depends on recognising an ad, and a wrong guess mutes real music — silently, and
-annoyingly hard to diagnose.
+If an ad slips through — you left Looptify disarmed, or Spotify fired a mid-session
+ad break — Looptify mutes Spotify while it plays and unmutes when real music returns.
+The ad still plays, silently.
 
-To enable it, capture what an ad actually looks like on your client:
+Detection matches the **artist** field exactly, against `ad_markers`. That's a
+deliberately narrow rule, built from real captured ads rather than guessed:
+
+```
+title='Dengarkan musik tanpa iklan.'  artist='Spotify'  album=''
+title='Nikmati musik tanpa iklan.'    artist='Spotify'  album=''
+```
+
+Both are from the same ad break. The titles differ and are localised — those are
+Indonesian — so the title is useless as a marker, while the artist stays `Spotify`.
+And matching exactly rather than by substring is what stops a legitimate
+**Spotify Singles** release from being muted as an ad.
+
+If your client reports ads differently, capture yours:
 
 1. Set `log_tracks = true` and run Looptify **disarmed**
-2. Wait for an ad. A `[track] ...` line prints with its real fields
-3. Put a distinctive substring from it into `ad_markers`, e.g. `["Advertisement"]`
+2. Wait for an ad — a `[track] ...` line prints with its real fields
+3. Add the artist it reports to `ad_markers`
 4. Set `log_tracks = false`
+
+Setting `ad_markers = []` turns muting off entirely.
 
 ## How it works
 

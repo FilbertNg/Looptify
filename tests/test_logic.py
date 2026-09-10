@@ -69,36 +69,59 @@ def test_unknown_duration_still_extrapolates():
     assert abs(got - 81.409) < 1e-6
 
 
+# The shipping default. Captured from a real Spotify Free ad break.
+MARKERS = ("Spotify",)
+
+
 def test_no_markers_means_detection_is_off():
     # The safety property: an empty marker list must never match anything,
     # including a track that looks exactly like an ad.
-    assert is_ad(snap(title="Advertisement", artist=""), ()) is False
+    assert is_ad(snap(title="Dengarkan musik tanpa iklan.", artist="Spotify"), ()) is False
 
 
-def test_matches_marker_in_title_case_insensitively():
-    assert is_ad(snap(title="Advertisement"), ("advertisement",)) is True
+def test_captured_real_ad_is_detected():
+    # Captured 2026-09-10 from a live Spotify Free ad break:
+    #   title='Dengarkan musik tanpa iklan.' artist='Spotify' album=''
+    ad = snap(title="Dengarkan musik tanpa iklan.", artist="Spotify", album="")
+    assert is_ad(ad, MARKERS) is True
 
 
-def test_matches_marker_in_artist():
-    assert is_ad(snap(artist="Spotify"), ("spotify",)) is True
+def test_second_captured_ad_from_the_same_break_is_detected():
+    # A different title in the same break, which is exactly why the title
+    # cannot be the marker: 'Nikmati musik tanpa iklan.' vs 'Dengarkan ...'.
+    ad = snap(title="Nikmati musik tanpa iklan.", artist="Spotify", album="")
+    assert is_ad(ad, MARKERS) is True
 
 
-def test_matches_marker_in_album():
-    assert is_ad(snap(album="Spotify Advert"), ("advert",)) is True
+def test_matching_is_case_insensitive():
+    assert is_ad(snap(artist="SPOTIFY"), ("spotify",)) is True
 
 
 def test_real_track_does_not_match():
-    assert is_ad(snap(), ("advertisement", "spotify")) is False
+    assert is_ad(snap(), MARKERS) is False
+
+
+def test_spotify_singles_release_is_not_an_ad():
+    # The false positive that substring matching would have caused. Spotify
+    # Singles is a real series, and muting it would be muting real music.
+    single = snap(title="Bad Habit", artist="Steve Lacy", album="Spotify Singles")
+    assert is_ad(single, MARKERS) is False
+
+
+def test_partial_artist_match_is_not_enough():
+    # Exact match only, or a band like this gets silently muted.
+    assert is_ad(snap(artist="Spotify Sessions Band"), MARKERS) is False
 
 
 def test_track_with_blank_metadata_does_not_match():
     # A local file with no tags must not be mistaken for an ad.
-    assert is_ad(snap(title="", artist="", album=""), ("advertisement",)) is False
+    assert is_ad(snap(title="", artist="", album=""), MARKERS) is False
 
 
 def test_empty_marker_string_is_ignored():
-    # An empty string is a substring of everything; it must not match all.
+    # A blank marker must not turn into "match everything".
     assert is_ad(snap(), ("",)) is False
+    assert is_ad(snap(artist=""), ("",)) is False
 
 
 CFG = Config()
@@ -143,8 +166,14 @@ def test_does_not_fire_on_unknown_duration():
 
 
 def test_does_not_fire_on_an_ad():
-    cfg = Config(ad_markers=("advertisement",))
-    d = ev(cfg=cfg, position=169.5, title="Advertisement")
+    # Looping an ad would be worse than useless: it would repeat it forever.
+    cfg = Config(ad_markers=MARKERS)
+    d = ev(
+        cfg=cfg,
+        position=169.5,
+        title="Dengarkan musik tanpa iklan.",
+        artist="Spotify",
+    )
     assert d.fire_loop is False
     assert d.should_mute is True
 
@@ -195,8 +224,13 @@ def test_rearms_after_restart_and_cooldown():
 
 
 def test_mute_is_reported_even_when_disarmed():
-    cfg = Config(ad_markers=("advertisement",))
-    d = ev(state=LooperState(armed=False), cfg=cfg, title="Advertisement")
+    cfg = Config(ad_markers=MARKERS)
+    d = ev(
+        state=LooperState(armed=False),
+        cfg=cfg,
+        title="Dengarkan musik tanpa iklan.",
+        artist="Spotify",
+    )
     assert d.should_mute is True
     assert d.fire_loop is False
 

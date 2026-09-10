@@ -130,11 +130,16 @@ async def run() -> int:
                     )
 
             if decision.should_mute and not muted:
-                set_spotify_muted(True)
+                count = set_spotify_muted(True)
                 muted = True
+                print(
+                    f"\n[mute] ad detected ({snap.artist!r}) — muted "
+                    f"{count} session(s)"
+                )
             elif not decision.should_mute and muted:
-                set_spotify_muted(False)
+                count = set_spotify_muted(False)
                 muted = False
+                print(f"\n[mute] ad over — unmuted {count} session(s)")
 
             if decision.fire_loop:
                 method = await monitor.loop_now()

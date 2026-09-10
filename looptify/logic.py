@@ -35,18 +35,29 @@ def extrapolate_position(snap: Snapshot, now: datetime) -> float:
 
 
 def is_ad(snap: Snapshot, markers: tuple[str, ...]) -> bool:
-    """True when this item matches a configured ad marker.
+    """True when the item's artist exactly matches a configured ad marker.
 
-    An empty marker tuple always returns False. That is the safety property:
-    ad detection ships off, and is enabled only after a real ad's SMTC fields
-    have been captured. Guessing here risks muting real music, which fails
-    silently and is miserable to diagnose.
+    An empty marker tuple always returns False. That is the safety property: ad
+    detection ships off, and is enabled only once a real ad has been captured.
+
+    Both the field and the match style come from a real captured ad:
+
+        title='Dengarkan musik tanpa iklan.' artist='Spotify' album=''
+
+    Two things follow from that. The title is campaign- and language-specific —
+    that one is Indonesian — so it is useless as a marker; the artist is the
+    stable field. And matching must be exact rather than by substring, because
+    a substring search for "Spotify" across title/artist/album would also match
+    legitimate *Spotify Singles* releases and mute real music.
     """
     if not markers:
         return False
 
-    haystack = f"{snap.title}\n{snap.artist}\n{snap.album}".lower()
-    return any(m.lower() in haystack for m in markers if m)
+    artist = snap.artist.strip().lower()
+    if not artist:
+        return False
+
+    return any(artist == m.strip().lower() for m in markers if m.strip())
 
 
 @dataclass(frozen=True)
