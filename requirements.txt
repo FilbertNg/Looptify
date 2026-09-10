@@ -1,0 +1,5 @@
+winsdk==1.0.0b10
+pycaw>=20251023
+comtypes>=1.4.16
+pywin32>=310
+psutil>=7.0.0

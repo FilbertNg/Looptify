@@ -1,0 +1,36 @@
+# Looptify configuration. Delete any line to use its default.
+
+# Fire the loop this many seconds before the track ends.
+# Spotify pushes position updates only every ~4.5s, so Looptify extrapolates
+# between pushes; measured accuracy is ~20ms, which makes 1.5s comfortable.
+#
+# IMPORTANT: if you enable Crossfade in Spotify (Settings > Playback), the next
+# track starts BEFORE the current one ends. Raise this above your crossfade
+# duration or the loop will fire too late.
+lead_seconds = 1.5
+
+# After firing, wait this long before another fire is possible.
+cooldown_seconds = 3.0
+
+# ...and also require playback to have restarted below this position.
+# Both conditions must hold, which is what prevents a double-fire.
+restart_threshold_seconds = 5.0
+
+# If SMTC data is staler than this, treat it as untrustworthy and do nothing.
+# Normal staleness peaks around 4.5s.
+max_drift_seconds = 10.0
+
+# How often to poll, in seconds.
+poll_interval = 0.15
+
+# Global hotkey to arm/disarm. Modifiers: ctrl, alt, shift, win.
+hotkey = "ctrl+alt+l"
+
+# Substrings that identify an ad in the track title, artist, or album
+# (case-insensitive). EMPTY MEANS AD MUTING IS OFF and nothing is ever muted.
+# Populate this only from real captured data — see log_tracks below.
+ad_markers = []
+
+# Log every track change with its full SMTC fields, so you can capture what a
+# real ad looks like and fill in ad_markers above.
+log_tracks = false
