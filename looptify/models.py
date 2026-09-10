@@ -18,6 +18,7 @@ class Snapshot:
     title: str
     artist: str
     album: str
+    track_number: int
     is_playing: bool
     position: float
     duration: float

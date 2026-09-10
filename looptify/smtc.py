@@ -31,7 +31,7 @@ class SpotifyMonitor:
     def __init__(self) -> None:
         self._manager: SessionManager | None = None
         self._session: Session | None = None
-        self._media: tuple[str, str, str] = ("", "", "")
+        self._media: tuple[str, str, str, int] = ("", "", "", 0)
         self._media_fetched_at: float = float("-inf")
         self._media_duration: float = -1.0
 
@@ -83,11 +83,12 @@ class SpotifyMonitor:
             self._media_fetched_at = now_mono
             self._media_duration = duration
 
-        title, artist, album = self._media
+        title, artist, album, track_number = self._media
         return Snapshot(
             title=title,
             artist=artist,
             album=album,
+            track_number=track_number,
             is_playing=is_playing,
             position=position,
             duration=duration,
@@ -96,15 +97,16 @@ class SpotifyMonitor:
         )
 
     @staticmethod
-    async def _read_media_properties(session: Session) -> tuple[str, str, str]:
+    async def _read_media_properties(session: Session) -> tuple[str, str, str, int]:
         try:
             info = await session.try_get_media_properties_async()
         except OSError:
-            return ("", "", "")
+            return ("", "", "", 0)
         return (
             info.title or "",
             info.artist or "",
             info.album_title or "",
+            info.track_number or 0,
         )
 
     async def loop_now(self) -> str:

@@ -21,6 +21,7 @@ def snap(**kw) -> Snapshot:
         title="oh yeah?",
         artist="Steve Lacy",
         album="Oh yeah?",
+        track_number=1,
         is_playing=True,
         position=79.409,
         duration=170.584,
@@ -69,59 +70,119 @@ def test_unknown_duration_still_extrapolates():
     assert abs(got - 81.409) < 1e-6
 
 
-# The shipping default. Captured from a real Spotify Free ad break.
-MARKERS = ("Spotify",)
+AD_CFG = Config()  # ad_markers=("Spotify",), detect_ads_by_structure=True
 
 
-def test_no_markers_means_detection_is_off():
-    # The safety property: an empty marker list must never match anything,
-    # including a track that looks exactly like an ad.
-    assert is_ad(snap(title="Dengarkan musik tanpa iklan.", artist="Spotify"), ()) is False
+def ad(**kw):
+    """A captured Spotify house ad: no album, no track number, 15-30s."""
+    base = dict(
+        title="Dengarkan musik tanpa iklan.",
+        artist="Spotify",
+        album="",
+        track_number=0,
+        duration=15.078,
+    )
+    base.update(kw)
+    return snap(**base)
 
+
+# --- rule 1: named artists ---
 
 def test_captured_real_ad_is_detected():
-    # Captured 2026-09-10 from a live Spotify Free ad break:
-    #   title='Dengarkan musik tanpa iklan.' artist='Spotify' album=''
-    ad = snap(title="Dengarkan musik tanpa iklan.", artist="Spotify", album="")
-    assert is_ad(ad, MARKERS) is True
+    # Captured 2026-09-10 from a live Spotify Free ad break.
+    assert is_ad(ad(), AD_CFG) is True
 
 
 def test_second_captured_ad_from_the_same_break_is_detected():
     # A different title in the same break, which is exactly why the title
     # cannot be the marker: 'Nikmati musik tanpa iklan.' vs 'Dengarkan ...'.
-    ad = snap(title="Nikmati musik tanpa iklan.", artist="Spotify", album="")
-    assert is_ad(ad, MARKERS) is True
+    assert is_ad(ad(title="Nikmati musik tanpa iklan."), AD_CFG) is True
 
 
-def test_matching_is_case_insensitive():
-    assert is_ad(snap(artist="SPOTIFY"), ("spotify",)) is True
+def test_artist_matching_is_case_insensitive():
+    assert is_ad(snap(artist="SPOTIFY", duration=200.0), AD_CFG) is True
 
+
+def test_named_artist_is_detected_even_when_long_and_albumed():
+    # The marker rule must not secretly depend on the structural one.
+    cfg = Config(detect_ads_by_structure=False)
+    assert is_ad(ad(duration=999.0, album="Whatever", track_number=3), cfg) is True
+
+
+# --- rule 2: structure, for advertisers no list could enumerate ---
+
+def test_third_party_ad_is_caught_without_any_marker():
+    # A brand's own ad reports the brand as artist, so no marker list can
+    # cover it. Structure catches it anyway.
+    assert is_ad(ad(title="Buy our thing", artist="Coca-Cola"), AD_CFG) is True
+
+
+def test_structural_rule_can_be_disabled():
+    cfg = Config(ad_markers=(), detect_ads_by_structure=False)
+    assert is_ad(ad(artist="Coca-Cola"), cfg) is False
+
+
+def test_all_detection_off_never_matches():
+    cfg = Config(ad_markers=(), detect_ads_by_structure=False)
+    assert is_ad(ad(), cfg) is False
+
+
+def test_zero_duration_boundary_frame_is_not_an_ad():
+    # Spotify briefly reports duration=0 at a track change; that transient
+    # must not read as an ad.
+    assert is_ad(ad(duration=0.0, artist="楽音"), AD_CFG) is False
+
+
+def test_long_untagged_track_is_not_an_ad():
+    # An untagged local file is protected by the duration bound.
+    local = snap(
+        title="my_recording", artist="me", album="", track_number=0, duration=400.0
+    )
+    assert is_ad(local, AD_CFG) is False
+
+
+# --- real music must survive both rules ---
 
 def test_real_track_does_not_match():
-    assert is_ad(snap(), MARKERS) is False
+    assert is_ad(snap(), AD_CFG) is False
 
 
 def test_spotify_singles_release_is_not_an_ad():
-    # The false positive that substring matching would have caused. Spotify
-    # Singles is a real series, and muting it would be muting real music.
-    single = snap(title="Bad Habit", artist="Steve Lacy", album="Spotify Singles")
-    assert is_ad(single, MARKERS) is False
+    # The false positive substring matching would have caused. Spotify Singles
+    # is a real series of 1,099 tracks; muting it would be muting real music.
+    single = snap(
+        title="Bad Habit", artist="Steve Lacy", album="Spotify Singles", duration=180.0
+    )
+    assert is_ad(single, AD_CFG) is False
+
+
+def test_spotify_sessions_ep_is_not_an_ad():
+    # Real releases: Dua Lipa, Sia, Twenty One Pilots all have one.
+    ep = snap(
+        title="Hotter Than Hell", artist="Dua Lipa", album="Spotify Sessions",
+        track_number=2, duration=190.0,
+    )
+    assert is_ad(ep, AD_CFG) is False
 
 
 def test_partial_artist_match_is_not_enough():
-    # Exact match only, or a band like this gets silently muted.
-    assert is_ad(snap(artist="Spotify Sessions Band"), MARKERS) is False
+    assert is_ad(snap(artist="Spotify Sessions Band"), AD_CFG) is False
 
 
-def test_track_with_blank_metadata_does_not_match():
-    # A local file with no tags must not be mistaken for an ad.
-    assert is_ad(snap(title="", artist="", album=""), MARKERS) is False
+def test_short_interlude_with_an_album_is_not_an_ad():
+    # Short is not enough on its own — it must also be release-less.
+    interlude = snap(
+        title="Interlude", artist="Some Band", album="Their Album",
+        track_number=7, duration=25.0,
+    )
+    assert is_ad(interlude, AD_CFG) is False
 
 
 def test_empty_marker_string_is_ignored():
     # A blank marker must not turn into "match everything".
-    assert is_ad(snap(), ("",)) is False
-    assert is_ad(snap(artist=""), ("",)) is False
+    cfg = Config(ad_markers=("",), detect_ads_by_structure=False)
+    assert is_ad(snap(), cfg) is False
+    assert is_ad(snap(artist=""), cfg) is False
 
 
 CFG = Config()
@@ -167,12 +228,13 @@ def test_does_not_fire_on_unknown_duration():
 
 def test_does_not_fire_on_an_ad():
     # Looping an ad would be worse than useless: it would repeat it forever.
-    cfg = Config(ad_markers=MARKERS)
     d = ev(
-        cfg=cfg,
+        cfg=AD_CFG,
         position=169.5,
         title="Dengarkan musik tanpa iklan.",
         artist="Spotify",
+        album="",
+        track_number=0,
     )
     assert d.fire_loop is False
     assert d.should_mute is True
@@ -224,12 +286,13 @@ def test_rearms_after_restart_and_cooldown():
 
 
 def test_mute_is_reported_even_when_disarmed():
-    cfg = Config(ad_markers=MARKERS)
     d = ev(
         state=LooperState(armed=False),
-        cfg=cfg,
+        cfg=AD_CFG,
         title="Dengarkan musik tanpa iklan.",
         artist="Spotify",
+        album="",
+        track_number=0,
     )
     assert d.should_mute is True
     assert d.fire_loop is False

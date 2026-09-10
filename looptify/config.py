@@ -17,7 +17,9 @@ class Config:
     max_drift_seconds: float = 10.0
     poll_interval: float = 0.15
     hotkey: str = "ctrl+alt+l"
-    ad_markers: tuple[str, ...] = ()
+    ad_markers: tuple[str, ...] = ("Spotify",)
+    detect_ads_by_structure: bool = True
+    ad_max_duration_seconds: float = 60.0
     log_tracks: bool = False
 
 
@@ -27,6 +29,7 @@ _POSITIVE = (
     "restart_threshold_seconds",
     "max_drift_seconds",
     "poll_interval",
+    "ad_max_duration_seconds",
 )
 
 

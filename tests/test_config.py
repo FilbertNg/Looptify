@@ -13,7 +13,9 @@ def test_defaults_match_measured_behaviour():
     assert cfg.max_drift_seconds == 10.0
     assert cfg.poll_interval == 0.15
     assert cfg.hotkey == "ctrl+alt+l"
-    assert cfg.ad_markers == ()
+    assert cfg.ad_markers == ("Spotify",)
+    assert cfg.detect_ads_by_structure is True
+    assert cfg.ad_max_duration_seconds == 60.0
     assert cfg.log_tracks is False
 
 
@@ -48,3 +50,13 @@ def test_lead_must_be_positive(tmp_path: Path):
     p.write_text("lead_seconds = -1\n", encoding="utf-8")
     with pytest.raises(ValueError, match="lead_seconds"):
         load_config(p)
+
+
+def test_ad_detection_can_be_turned_off_entirely(tmp_path: Path):
+    p = tmp_path / "config.toml"
+    p.write_text(
+        "ad_markers = []\ndetect_ads_by_structure = false\n", encoding="utf-8"
+    )
+    cfg = load_config(p)
+    assert cfg.ad_markers == ()
+    assert cfg.detect_ads_by_structure is False

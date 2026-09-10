@@ -34,30 +34,50 @@ def extrapolate_position(snap: Snapshot, now: datetime) -> float:
     return estimated
 
 
-def is_ad(snap: Snapshot, markers: tuple[str, ...]) -> bool:
-    """True when the item's artist exactly matches a configured ad marker.
+def is_ad(snap: Snapshot, cfg: Config) -> bool:
+    """True when this item looks like an ad rather than a track.
 
-    An empty marker tuple always returns False. That is the safety property: ad
-    detection ships off, and is enabled only once a real ad has been captured.
+    Two independent rules, both built from real captured ads rather than
+    guessed. Either one is enough.
 
-    Both the field and the match style come from a real captured ad:
+    **Named artists** (`ad_markers`). Spotify's own house ads report
+    `artist='Spotify'`. Matching is on the artist, exactly, and both choices
+    matter. Titles are campaign- and language-specific — two ads captured in a
+    single break were 'Dengarkan musik tanpa iklan.' and 'Nikmati musik tanpa
+    iklan.', which is Indonesian — so a title can never be a reliable marker.
+    And exact matching rather than substring is what stops legitimate releases
+    like *Spotify Singles* (1,099 tracks) or *Spotify Sessions* (Dua Lipa, Sia,
+    Twenty One Pilots) from being muted as ads.
 
-        title='Dengarkan musik tanpa iklan.' artist='Spotify' album=''
+    **Structure** (`detect_ads_by_structure`). A named-artist list can only
+    ever catch Spotify's own ads; a third-party advertiser reports its own
+    brand as the artist, and no list can enumerate every advertiser. But ads
+    are structurally distinct from catalogue tracks regardless of who made
+    them: every real Spotify track belongs to a release, so it carries an
+    album and a track number, while ads carry neither and run short.
 
-    Two things follow from that. The title is campaign- and language-specific —
-    that one is Indonesian — so it is useless as a marker; the artist is the
-    stable field. And matching must be exact rather than by substring, because
-    a substring search for "Spotify" across title/artist/album would also match
-    legitimate *Spotify Singles* releases and mute real music.
+        ad:    album=''            track_number=0  duration=15-30s
+        track: album='mosi mosi?'  track_number=1  duration=163.75s
+
+    All three conditions must hold, which keeps an untagged local file from
+    being muted unless it is also under `ad_max_duration_seconds`. The duration
+    must be non-zero because Spotify briefly reports zero at a track boundary.
     """
-    if not markers:
-        return False
-
     artist = snap.artist.strip().lower()
-    if not artist:
-        return False
+    if artist:
+        for marker in cfg.ad_markers:
+            if marker.strip() and artist == marker.strip().lower():
+                return True
 
-    return any(artist == m.strip().lower() for m in markers if m.strip())
+    if cfg.detect_ads_by_structure:
+        if (
+            not snap.album.strip()
+            and snap.track_number == 0
+            and 0 < snap.duration <= cfg.ad_max_duration_seconds
+        ):
+            return True
+
+    return False
 
 
 @dataclass(frozen=True)
@@ -100,7 +120,7 @@ def evaluate(
     """
     est = extrapolate_position(snap, now_utc)
     remaining = snap.duration - est if snap.duration > 0 else float("inf")
-    ad = is_ad(snap, cfg.ad_markers)
+    ad = is_ad(snap, cfg)
     drift = (now_utc - snap.last_updated).total_seconds()
 
     next_state = state

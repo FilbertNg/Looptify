@@ -26,18 +26,34 @@ poll_interval = 0.15
 # Global hotkey to arm/disarm. Modifiers: ctrl, alt, shift, win.
 hotkey = "ctrl+alt+l"
 
-# Artist names that identify an ad. Matched against the ARTIST field exactly
-# (case-insensitive). EMPTY MEANS AD MUTING IS OFF and nothing is ever muted.
+# --- Ad detection. Two independent rules; either one is enough. ---
+
+# Rule 1: artist names that mean "this is an ad", matched against the ARTIST
+# field EXACTLY (case-insensitive). Catches Spotify's own house ads.
 #
-# "Spotify" comes from real captured ads. Note the matching is on the artist
-# and is exact, both deliberately: ad TITLES vary per campaign and language
-# (two captured in one break were 'Dengarkan musik tanpa iklan.' and 'Nikmati
-# musik tanpa iklan.'), while the artist stays "Spotify". Exact matching is
-# what stops a legitimate "Spotify Singles" release from being muted.
-#
-# If your client reports ads differently, set log_tracks below and add what
-# you actually see.
+# Matching is on the artist, not the title, because ad titles vary by campaign
+# and language — two captured in one break were 'Dengarkan musik tanpa iklan.'
+# and 'Nikmati musik tanpa iklan.' — while the artist stays "Spotify".
+# Matching is exact rather than substring so that legitimate releases like
+# "Spotify Singles" or "Spotify Sessions" are never muted as ads.
 ad_markers = ["Spotify"]
+
+# Rule 2: detect ads by structure instead of by name. Every real Spotify track
+# belongs to a release, so it has an album and a track number; ads have
+# neither and run short. This is the rule that catches THIRD-PARTY ads, which
+# report the advertiser's own brand as the artist and so can never be covered
+# by the list above. It is also language- and country-independent.
+#
+# All three conditions must hold: no album, no track number, and shorter than
+# ad_max_duration_seconds.
+detect_ads_by_structure = true
+
+# Upper bound on how long an ad can be. Captured ads ran 14-30s. Raising this
+# too far risks muting untagged local files; lowering it risks missing long ads.
+ad_max_duration_seconds = 60.0
+
+# To turn ad muting off completely, set ad_markers = [] AND
+# detect_ads_by_structure = false.
 
 # Log every track change with its full SMTC fields, so you can capture what a
 # real ad looks like and fill in ad_markers above.

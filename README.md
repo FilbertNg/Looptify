@@ -79,7 +79,9 @@ Edit `config.toml`. Delete any line to use its default.
 | `max_drift_seconds` | `10.0` | Ignore playback data staler than this |
 | `poll_interval` | `0.15` | How often to check, in seconds |
 | `hotkey` | `"ctrl+alt+l"` | Arm/disarm key. Modifiers: `ctrl`, `alt`, `shift`, `win` |
-| `ad_markers` | `["Spotify"]` | Artist names identifying an ad, matched exactly. **Empty disables muting** |
+| `ad_markers` | `["Spotify"]` | Artist names identifying an ad, matched exactly |
+| `detect_ads_by_structure` | `true` | Also detect ads by shape — no album, no track number, short |
+| `ad_max_duration_seconds` | `60.0` | Longest an ad can be, for the rule above |
 | `log_tracks` | `false` | Log every track change with its raw media fields |
 
 > **Using Crossfade?** If you have Crossfade enabled in Spotify (Settings →
@@ -92,18 +94,38 @@ If an ad slips through — you left Looptify disarmed, or Spotify fired a mid-se
 ad break — Looptify mutes Spotify while it plays and unmutes when real music returns.
 The ad still plays, silently.
 
-Detection matches the **artist** field exactly, against `ad_markers`. That's a
-deliberately narrow rule, built from real captured ads rather than guessed:
+Detection uses two independent rules, either of which is enough. Both were built
+from real captured ads rather than guessed.
+
+**Rule 1 — named artists.** Spotify's house ads report `artist='Spotify'`:
 
 ```
-title='Dengarkan musik tanpa iklan.'  artist='Spotify'  album=''
-title='Nikmati musik tanpa iklan.'    artist='Spotify'  album=''
+title='Dengarkan musik tanpa iklan.'  artist='Spotify'  album=''  track_number=0
+title='Nikmati musik tanpa iklan.'    artist='Spotify'  album=''  track_number=0
 ```
 
-Both are from the same ad break. The titles differ and are localised — those are
-Indonesian — so the title is useless as a marker, while the artist stays `Spotify`.
-And matching exactly rather than by substring is what stops a legitimate
-**Spotify Singles** release from being muted as an ad.
+Both from the same break. Note the titles differ and are localised — those are
+Indonesian — so the title can never be a reliable marker, while the artist stays
+`Spotify`. Matching is on the artist and is **exact**, because a substring search
+for "Spotify" would also match legitimate releases: **Spotify Singles** is a real
+series of over 1,000 tracks, and **Spotify Sessions** EPs exist from Dua Lipa,
+Sia and Twenty One Pilots. Muting those would be muting real music.
+
+**Rule 2 — structure.** A list of artist names can only ever catch Spotify's own
+ads. A third-party advertiser reports its own brand as the artist, and no list can
+enumerate every advertiser. But ads are structurally different from catalogue
+tracks no matter who made them:
+
+| | Ad | Real track |
+|---|---|---|
+| `album` | *(empty)* | `mosi mosi?` |
+| `track_number` | `0` | `1` |
+| `duration` | 14–30s | 163s |
+
+Every real Spotify track belongs to a release, so it carries an album and a track
+number. Ads carry neither and run short. All three conditions must hold, which is
+what keeps an untagged local file from being muted unless it is also very short.
+This rule needs no names, so it works in any country and any language.
 
 If your client reports ads differently, capture yours:
 
@@ -112,7 +134,11 @@ If your client reports ads differently, capture yours:
 3. Add the artist it reports to `ad_markers`
 4. Set `log_tracks = false`
 
-Setting `ad_markers = []` turns muting off entirely.
+To turn muting off entirely, set `ad_markers = []` **and**
+`detect_ads_by_structure = false`.
+
+Looptify also clears any leftover mute on startup, so a run that was killed
+mid-ad can't leave Spotify permanently silent.
 
 ## How it works
 

@@ -80,6 +80,11 @@ async def run() -> int:
     monitor = SpotifyMonitor()
     await monitor.connect()
 
+    # Clear any mute left behind by a previous run that was killed mid-ad.
+    # Without this, a crash during an ad leaves Spotify silent with no visible
+    # cause, and the fix is not discoverable.
+    set_spotify_muted(False)
+
     print(f"Looptify — press {cfg.hotkey} to arm/disarm, Ctrl+C to quit.")
     if not cfg.ad_markers:
         print("Ad muting is OFF (ad_markers is empty in config.toml).")
