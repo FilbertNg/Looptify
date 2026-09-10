@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from looptify.logic import extrapolate_position
+from looptify.logic import extrapolate_position, is_ad
 from looptify.models import Snapshot
 
 T0 = datetime(2026, 9, 10, 9, 42, 40, tzinfo=timezone.utc)
@@ -58,3 +58,35 @@ def test_clock_skew_backwards_does_not_rewind():
 def test_unknown_duration_still_extrapolates():
     got = extrapolate_position(snap(duration=0.0), T0 + timedelta(seconds=2))
     assert abs(got - 81.409) < 1e-6
+
+
+def test_no_markers_means_detection_is_off():
+    # The safety property: an empty marker list must never match anything,
+    # including a track that looks exactly like an ad.
+    assert is_ad(snap(title="Advertisement", artist=""), ()) is False
+
+
+def test_matches_marker_in_title_case_insensitively():
+    assert is_ad(snap(title="Advertisement"), ("advertisement",)) is True
+
+
+def test_matches_marker_in_artist():
+    assert is_ad(snap(artist="Spotify"), ("spotify",)) is True
+
+
+def test_matches_marker_in_album():
+    assert is_ad(snap(album="Spotify Advert"), ("advert",)) is True
+
+
+def test_real_track_does_not_match():
+    assert is_ad(snap(), ("advertisement", "spotify")) is False
+
+
+def test_track_with_blank_metadata_does_not_match():
+    # A local file with no tags must not be mistaken for an ad.
+    assert is_ad(snap(title="", artist="", album=""), ("advertisement",)) is False
+
+
+def test_empty_marker_string_is_ignored():
+    # An empty string is a substring of everything; it must not match all.
+    assert is_ad(snap(), ("",)) is False
