@@ -1,8 +1,4 @@
-"""Adapter over Windows System Media Transport Controls.
-
-Verified against winsdk 1.0.0b10 and the Microsoft Store build of Spotify
-(app id 'SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify') on 2026-09-10.
-"""
+"""Reads Spotify's playback state from Windows media controls (SMTC)."""
 
 from __future__ import annotations
 
@@ -20,8 +16,7 @@ from winsdk.windows.media.control import (
 
 from looptify.models import Snapshot
 
-# Media properties come from an async call that is far heavier than reading the
-# timeline, so they are refreshed on this cadence rather than every poll.
+# Reading media properties is much heavier than the timeline, so do it rarely.
 MEDIA_REFRESH_SECONDS = 1.0
 
 
@@ -70,9 +65,7 @@ class SpotifyMonitor:
             self._session = None
             return None
 
-        # These are documented as non-null but WinRT returns null in practice
-        # while a session is tearing down or between tracks. Observed live:
-        # get_timeline_properties() returned None and crashed the poll loop.
+        # Documented as non-null, but WinRT returns null between tracks.
         if timeline is None or playback is None:
             self._session = None
             return None
@@ -88,8 +81,7 @@ class SpotifyMonitor:
         position = position_delta.total_seconds()
         is_playing = playback.playback_status == PlaybackStatus.PLAYING
 
-        # Refresh title/artist/album on a slower cadence, or immediately when
-        # the duration changes, which reliably signals a new track.
+        # A changed duration means a new track, so refresh metadata now.
         now_mono = time.monotonic()
         stale = now_mono - self._media_fetched_at >= MEDIA_REFRESH_SECONDS
         if stale or duration != self._media_duration:
@@ -126,11 +118,10 @@ class SpotifyMonitor:
         )
 
     async def loop_now(self) -> str:
-        """Restart the current track. Returns which method was used.
+        """Restart the current track. Returns which method worked.
 
-        Seeking to zero is preferred: it is exact, and it does not depend on
-        Spotify's rule that previous-track restarts rather than goes back when
-        position is past ~3 seconds. Skip-previous is the fallback.
+        Prefers seeking to 0:00 — exact, and doesn't rely on Spotify's
+        "previous restarts if past ~3s" behaviour.
         """
         if self._session is None:
             return "unavailable"

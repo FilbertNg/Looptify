@@ -1,4 +1,4 @@
-"""The poll loop and console display."""
+"""The poll loop, console display, and wiring."""
 
 from __future__ import annotations
 
@@ -18,8 +18,7 @@ from looptify.smtc import SpotifyMonitor
 from looptify.toast import ToastNotifier
 
 
-# How many consecutive poll failures to tolerate before giving up. Transient
-# nulls from the Windows media API are survivable; a persistent fault is not.
+# Ride out transient media-API hiccups, but don't spin forever on a real fault.
 MAX_CONSECUTIVE_ERRORS = 20
 
 
@@ -118,9 +117,7 @@ async def run() -> int:
     monitor = SpotifyMonitor()
     await monitor.connect()
 
-    # Clear any mute left behind by a previous run that was killed mid-ad.
-    # Without this, a crash during an ad leaves Spotify silent with no visible
-    # cause, and the fix is not discoverable.
+    # A previous run killed mid-ad would have left Spotify muted.
     set_spotify_muted(False)
 
     muted = False
@@ -142,8 +139,7 @@ async def run() -> int:
         print("Notifications unavailable (tkinter could not start).")
     print()
 
-    # Looptify starts armed by default, so say so — otherwise the one moment
-    # the user most needs to know its state is the one moment it stays silent.
+    # Starting armed is silent otherwise, which is when state matters most.
     if state.armed:
         toaster.show(
             "Looptify Activated",
@@ -222,9 +218,7 @@ async def run() -> int:
             except (KeyboardInterrupt, asyncio.CancelledError):
                 raise
             except Exception as exc:
-                # Looptify is meant to run unattended for hours, so one bad
-                # frame from a Windows API must not end the session. Bounded,
-                # so a genuinely broken state still stops rather than spinning.
+                # This runs unattended for hours; one bad frame shouldn't end it.
                 consecutive_errors += 1
                 print(
                     f"\n[warn] poll failed "

@@ -38,10 +38,10 @@ _POSITIVE = (
 
 
 def load_config(path: Path | None = None) -> Config:
-    """Load config from TOML, falling back to defaults for absent keys.
+    """Load config.toml, using defaults for anything absent.
 
-    Raises ValueError on unknown keys or non-positive timing values, so a typo
-    fails loudly at startup instead of silently doing nothing.
+    Raises ValueError on unknown keys, so a typo fails loudly at startup
+    rather than silently doing nothing.
     """
     path = Path("config.toml") if path is None else path
     if not path.exists():

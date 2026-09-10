@@ -1,11 +1,4 @@
-"""Console output setup.
-
-The Windows console defaults to a legacy code page (cp1252 here), so printing a
-track title containing anything outside Latin-1 — Japanese, Korean, Cyrillic,
-emoji, and plenty of ordinary punctuation — raises UnicodeEncodeError and kills
-the process. Spotify track names hit this constantly, so every entry point
-reconfigures stdout before printing anything.
-"""
+"""Console setup: encoding, and cleanup when the window is closed."""
 
 from __future__ import annotations
 
@@ -21,21 +14,16 @@ _CTRL_SHUTDOWN_EVENT = 6
 
 _HANDLER_ROUTINE = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_uint)
 
-# Windows calls the handler on its own thread and frees nothing for us, so the
-# callback object has to outlive this function or it gets garbage collected and
-# the process crashes when the console closes.
+# Must outlive this module's functions or it gets collected and Windows
+# crashes the process calling into freed memory.
 _installed_handlers: list = []
 
 
 def on_console_close(cleanup: Callable[[], None]) -> bool:
-    """Run `cleanup` when the console window is closed or the user logs off.
+    """Run `cleanup` when the console window is closed. False if not installed.
 
-    Clicking the X on a console window terminates the process without raising
-    KeyboardInterrupt, so `finally` blocks never run. Without this, closing the
-    window during an ad would leave Spotify muted. Windows gives the handler a
-    few seconds before killing the process, which is ample.
-
-    Returns False if the handler could not be installed.
+    Clicking the X kills the process without raising KeyboardInterrupt, so
+    `finally` never runs — which would leave Spotify muted mid-ad.
     """
     handled = {
         _CTRL_C_EVENT,
@@ -51,8 +39,7 @@ def on_console_close(cleanup: Callable[[], None]) -> bool:
                 cleanup()
             except Exception:
                 pass
-            # Ctrl+C stays with Python so KeyboardInterrupt still works;
-            # the others we own, because the process is going away regardless.
+            # Leave Ctrl+C to Python so KeyboardInterrupt still works.
             return ctrl_type != _CTRL_C_EVENT
         return False
 
@@ -65,11 +52,10 @@ def on_console_close(cleanup: Callable[[], None]) -> bool:
 
 
 def enable_unicode_output() -> None:
-    """Switch stdout/stderr to UTF-8, replacing anything unrepresentable.
+    """Switch stdout/stderr to UTF-8 so non-Latin track names don't crash us.
 
-    `errors="replace"` matters as much as the encoding: a terminal font that
-    cannot render a glyph should show a placeholder, never crash the looper
-    mid-track.
+    The Windows console defaults to a legacy code page, where printing a
+    Japanese or Cyrillic title raises UnicodeEncodeError.
     """
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)

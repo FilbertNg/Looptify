@@ -1,9 +1,7 @@
-"""Global hotkeys via RegisterHotKey.
+"""Global hotkeys via RegisterHotKey — no admin rights, unlike a key hook.
 
-RegisterHotKey needs a thread with a message pump, so the listener owns a
-dedicated thread. All hotkeys share that one thread and pump — registering a
-second key costs a table entry, not another thread. This approach needs no
-administrator rights, unlike a low-level keyboard hook.
+Needs a thread with a message pump, so the listener owns one and every
+hotkey shares it.
 """
 
 from __future__ import annotations
@@ -65,11 +63,9 @@ def parse_hotkey(spec: str) -> tuple[int, int]:
 
 
 class HotkeyListener:
-    """Runs callbacks when any of its hotkeys is pressed, from its own thread.
+    """Runs callbacks on hotkey presses, from its own thread.
 
-    Takes a mapping of hotkey spec to callback, e.g. ``{"ctrl+alt+l": toggle}``.
-    Extra bindings cost a table entry rather than another thread, since they
-    all share this listener's message pump.
+    Takes ``{"ctrl+alt+l": toggle}``; extra bindings share the same thread.
     """
 
     def __init__(self, bindings: Mapping[str, Callable[[], None]]) -> None:

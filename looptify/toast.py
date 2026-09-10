@@ -1,22 +1,12 @@
-"""Small on-screen notifications for arm/disarm.
+"""Corner notifications for arm/disarm.
 
-Drawn with tkinter rather than the native Windows toast API. Native toasts
-require an unpackaged app to register an AppUserModelID via a Start Menu
-shortcut, and silently show nothing if it is missing — a bad failure mode for
-the one feature whose entire job is telling you what state you are in. A
-borderless always-on-top window has no such requirement and needs no extra
-dependency, since tkinter ships with Python.
+tkinter rather than native Windows toasts: those need a registered
+AppUserModelID and show nothing without one, which is a bad failure mode
+for a feature whose job is reporting state.
 
-Tk is not thread-safe and its interpreter belongs to whichever thread creates
-it, so one dedicated thread owns a hidden root for the life of the process and
-takes requests through a queue. Idle cost is an `after()` timer that wakes a
-few times a second to check an empty queue.
-
-A toast fades in, holds, then fades out. A new toast does not wait out the old
-one's hold: it cuts the hold short and the old toast exits on a quicker fade
-before the new one fades in. Nothing ever snaps off screen, and hammering the
-hotkey always ends on the current state rather than a backlog, because only the
-most recent pending toast is kept.
+Tk owns its interpreter per-thread, so one thread holds a hidden root and
+takes work off a queue. A toast fades in, holds, fades out; a newer one
+cuts the hold short and takes over once the old one has faded.
 """
 
 from __future__ import annotations

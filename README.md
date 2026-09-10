@@ -1,44 +1,51 @@
+<div align="center">
+
 # Looptify
 
 **Loops the current Spotify track just before it ends, so the post-track ad never fires.**
 
 [![tests](https://github.com/FilbertNg/Looptify/actions/workflows/tests.yml/badge.svg)](https://github.com/FilbertNg/Looptify/actions/workflows/tests.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![python: 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![python: 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 ![platform: Windows](https://img.shields.io/badge/platform-Windows-blue.svg)
+![no premium needed](https://img.shields.io/badge/Spotify-Free%20account-1db954.svg)
+
+</div>
 
 ---
 
 ## Demo
 
-```
-Looptify — press ctrl+alt+l to arm/disarm, Ctrl+C to quit.
-Ad muting is OFF (ad_markers is empty in config.toml).
+<!--
+  To show an inline video player instead of the link below:
+  open a new GitHub issue on this repo, drag docs/assets/demo.mp4 into the
+  comment box, wait for it to upload, then paste the resulting
+  https://github.com/user-attachments/... URL here on its own line.
+  GitHub renders that as a real player. Relative .mp4 paths do not work.
+-->
 
-[ARMED ] ▶ Steve Lacy - oh yeah?                    2:47/2:50 loop in   1.4s
+**[▶ Watch the demo](docs/assets/demo.mp4)** — armed, counting down, looping at the boundary.
+
+```console
+Looptify — ctrl+alt+l to arm/disarm. Ctrl+C or close this window to quit.
+Ad muting: ON — artist in ['Spotify'] or no album/track and under 60s
+
+[ARMED ] ▶ Steve Lacy - oh yeah?                    2:47/2:50  loop in   1.4s
 [loop] restarted via seek
-[ARMED ] ▶ Steve Lacy - oh yeah?                    0:01/2:50 loop in 169.0s
+[ARMED ] ▶ Steve Lacy - oh yeah?                    0:01/2:50  loop in 169.0s
 ```
 
-## What it does
+## The problem
 
-If you use Spotify Free on desktop, an ad plays after a track finishes. The
-well-known workaround is to hit the previous-track button a moment before the song
-ends — the track restarts, Spotify never registers a completion, and no ad plays.
+Spotify Free plays an ad after a track finishes. The well-known workaround is to hit
+previous-track a moment before the song ends — the track restarts, Spotify never
+registers a completion, and no ad plays.
 
-The problem is you have to *notice* the song ending and react in time. Miss it by a
-second and you get the ad.
+The catch is you have to *notice* the song ending and react in time. Miss it by a
+second and you get the ad anyway.
 
-Looptify watches the playback position and does it for you. Press the hotkey to arm
-it, and roughly 1.5 seconds before the track ends it seeks back to 0:00. The song
-loops forever until you disarm it.
-
-## Requirements
-
-- **Windows 10 or 11** — Looptify uses the Windows media API
-- **Python 3.11+**
-- **Spotify desktop** — either the Microsoft Store build or the standalone installer
-- **Spotify Free is fine.** No Premium, no developer account, no API key, no login
+Looptify watches the playback position and does it for you, about 1.5 seconds before
+the end, every time.
 
 ## Install
 
@@ -48,35 +55,83 @@ cd Looptify
 pip install -r requirements.txt
 ```
 
+**Requirements:** Windows 10/11 · Python 3.11+ · Spotify desktop (Store or standalone).
+A **free** Spotify account is fine — no Premium, no developer account, no API key, no login.
+
 ## Usage
 
-Start Spotify, play something, then run:
-
-```bash
-python -m looptify
-```
-
-or double-click `run.bat`.
+Start Spotify, play something, then run `python -m looptify` — or double-click `run.bat`.
 
 **Looptify starts armed**, so whatever is playing begins looping straight away.
 
 | | |
 |---|---|
-| **Ctrl+Alt+L** | Arm / disarm. Works even when Looptify isn't the focused window. |
-| **Ctrl+C**, or closing the window | Quit, cleanly. |
+| **Ctrl+Alt+L** | Arm / disarm, from anywhere — Looptify doesn't need focus |
+| **Ctrl+C**, or closing the window | Quit, cleanly |
 
-Each time you arm or disarm — and once at startup — a notification fades in at the
-corner of the screen, **Looptify Activated** or **Looptify Deactivated**, holds for
-three seconds, then fades out. Since Looptify otherwise runs silently in the
-background, that's usually the only way to tell what state it's in. Press the hotkey
-again while one is showing and it exits early to make way for the new one, so the
-notification always reflects the current state.
+Every time you arm or disarm, a notification fades in at the corner of the screen —
+**Looptify Activated** or **Looptify Deactivated** — holds for three seconds, then
+fades out. It runs silently in the background otherwise, so that's usually the only
+way to tell what state it's in.
 
-**ARMED** means the current song will loop indefinitely, and a countdown to the next
-loop appears. Skip to a different song while armed and it loops that one instead.
-**IDLE** means Looptify is watching but doing nothing — tracks play out normally.
+**ARMED** loops the current song indefinitely and shows a countdown to the next loop.
+Skip to a different song and it loops that one instead. **IDLE** just watches; tracks
+play out normally.
 
-If you'd rather start idle, set `start_armed = false` in `config.toml`.
+## How it works
+
+Spotify publishes playback state to **SMTC** (System Media Transport Controls), the
+Windows API behind the media overlay. Looptify reads position, duration and play state
+from it. No network calls, no Spotify API, no reading the screen.
+
+#### SMTC doesn't tick
+
+It pushes an update only on events, and on Spotify that turns out to be roughly every
+**4.5 seconds** — measured staleness reached **4.489s**. Polling the reported position
+and firing at "1.5 seconds remaining" would fire *three seconds after* the track had
+already ended. The tool would look correct and never work.
+
+So the position is extrapolated instead. Every timeline update carries the timestamp it
+was stamped at, and while playback runs the true position is that value plus the elapsed
+time since:
+
+```python
+estimated_position = position + (now − last_updated)
+```
+
+Measured against real playback, this predicts the true position to within about **20 ms**
+across a full 4.5-second gap — which is what makes a 1.5-second lead safe. You can watch
+it work: `position` sits frozen for seconds while the estimate climbs smoothly, then the
+next push lands exactly where the estimate predicted.
+
+#### Restarting the track
+
+Looptify seeks to 0:00 through SMTC. That's exact, and unlike pressing previous-track it
+doesn't depend on Spotify's "restart if past 3 seconds" rule. If a client doesn't support
+seeking it falls back to skip-previous. Both target Spotify's own media session rather
+than broadcasting a global media key, so neither can hit a different media app.
+
+Two guards stop one pass through the end of a track from firing repeatedly: a cooldown,
+and a requirement that playback is actually observed back near the start.
+
+#### Structure
+
+Every Windows API call lives in a thin adapter; every decision lives in one pure module.
+
+```
+looptify/
+├── logic.py     ← pure: extrapolation, ad detection, the fire decision
+├── smtc.py         adapter: read playback state, seek
+├── audio.py        adapter: mute Spotify
+├── hotkey.py       adapter: global hotkey
+├── toast.py        adapter: on-screen notifications
+├── console.py      adapter: encoding, clean shutdown
+└── cli.py          poll loop and wiring
+```
+
+That split is why the timing rules can be tested against synthetic values instead of
+waiting three minutes for a real song to end — and why CI runs the whole suite on a
+machine with no Spotify installed.
 
 ## Configuration
 
@@ -98,37 +153,36 @@ Edit `config.toml`. Delete any line to use its default.
 | `ad_max_duration_seconds` | `60.0` | Longest an ad can be, for the rule above |
 | `log_tracks` | `false` | Log every track change with its raw media fields |
 
-> **Using Crossfade?** If you have Crossfade enabled in Spotify (Settings →
-> Playback), the next track begins *before* the current one ends. Raise
-> `lead_seconds` above your crossfade duration or the loop will fire too late.
+> [!IMPORTANT]
+> **Using Crossfade?** With Crossfade on (Settings → Playback), the next track begins
+> *before* the current one ends. Raise `lead_seconds` above your crossfade duration or
+> the loop will fire too late.
 
-### Ad muting
+## Ad muting
 
-If an ad slips through — you left Looptify disarmed, or Spotify fired a mid-session
-ad break — Looptify mutes Spotify while it plays and unmutes when real music returns.
-The ad still plays, silently.
+If an ad slips through — you left Looptify disarmed, or Spotify fired a mid-session ad
+break — Looptify mutes Spotify while it plays and unmutes when real music returns. The
+ad still plays, silently.
 
-Detection uses two independent rules, either of which is enough. Both were built
-from real captured ads rather than guessed.
+Detection uses two independent rules, either of which is enough. Both were built from
+real captured ads rather than guessed.
 
-**Rule 1 — named artists.** Spotify's house ads report `artist='Spotify'`:
+**By artist.** Spotify's house ads report `artist='Spotify'`:
 
 ```
 title='Dengarkan musik tanpa iklan.'  artist='Spotify'  album=''  track_number=0
 title='Nikmati musik tanpa iklan.'    artist='Spotify'  album=''  track_number=0
 ```
 
-Both from the same break. Note the titles differ and are localised — those are
-Indonesian — so the title can never be a reliable marker, while the artist stays
-`Spotify`. Matching is on the artist and is **exact**, because a substring search
-for "Spotify" would also match legitimate releases: **Spotify Singles** is a real
-series of over 1,000 tracks, and **Spotify Sessions** EPs exist from Dua Lipa,
-Sia and Twenty One Pilots. Muting those would be muting real music.
+Both from the same break. The titles differ and are localised — those are Indonesian —
+so a title can never be a reliable marker, while the artist stays `Spotify`. Matching is
+**exact**, because a substring search for "Spotify" would also match legitimate releases:
+*Spotify Singles* is a real series of over 1,000 tracks, and *Spotify Sessions* EPs exist
+from Dua Lipa, Sia and Twenty One Pilots. Muting those would be muting real music.
 
-**Rule 2 — structure.** A list of artist names can only ever catch Spotify's own
-ads. A third-party advertiser reports its own brand as the artist, and no list can
-enumerate every advertiser. But ads are structurally different from catalogue
-tracks no matter who made them:
+**By structure.** A list of artist names can only catch Spotify's own ads — a third-party
+advertiser reports its own brand, and no list can enumerate every advertiser. But ads are
+structurally different from catalogue tracks regardless of who made them:
 
 | | Ad | Real track |
 |---|---|---|
@@ -136,96 +190,53 @@ tracks no matter who made them:
 | `track_number` | `0` | `1` |
 | `duration` | 14–30s | 163s |
 
-Every real Spotify track belongs to a release, so it carries an album and a track
-number. Ads carry neither and run short. All three conditions must hold, which is
-what keeps an untagged local file from being muted unless it is also very short.
-This rule needs no names, so it works in any country and any language.
+Every real Spotify track belongs to a release, so it carries an album and a track number.
+Ads carry neither and run short. All three conditions must hold, which keeps an untagged
+local file from being muted unless it's also very short. This rule needs no names, so it
+works in any country and any language.
 
-If your client reports ads differently, capture yours:
+To capture your own, set `log_tracks = true`, run **disarmed**, and wait for an ad — a
+`[track] …` line prints its real fields. Add the artist to `ad_markers`, then set
+`log_tracks = false`. Setting `ad_markers = []` *and* `detect_ads_by_structure = false`
+turns muting off entirely.
 
-1. Set `log_tracks = true` and run Looptify **disarmed**
-2. Wait for an ad — a `[track] ...` line prints with its real fields
-3. Add the artist it reports to `ad_markers`
-4. Set `log_tracks = false`
-
-To turn muting off entirely, set `ad_markers = []` **and**
-`detect_ads_by_structure = false`.
-
-Looptify also clears any leftover mute on startup, so a run that was killed
-mid-ad can't leave Spotify permanently silent.
-
-## How it works
-
-Spotify publishes playback state to **SMTC** (System Media Transport Controls), the
-Windows API behind the media overlay. Looptify reads position, duration and play state
-from it. No network calls, no Spotify API, no reading the screen.
-
-The interesting part is that **SMTC does not tick.** It pushes an update only on
-events, and on Spotify that turns out to be roughly every 4.5 seconds — position
-readings were measured up to **4.489 s stale**. Polling the reported position naively
-and firing at "1.5 seconds remaining" would fire *three seconds after* the track had
-already ended.
-
-So Looptify extrapolates instead. Every timeline update carries the timestamp it was
-stamped at, and while playback is running the real position is that value plus the
-elapsed time since:
-
-```
-estimated_position = position + (now − last_updated)
-```
-
-Measured against real playback, this predicts the true position to within about
-**20 ms** across a full 4.5-second gap, which is what makes a 1.5-second lead safe.
-
-To restart the track, Looptify seeks to 0:00 via SMTC. That is exact, and unlike
-pressing previous-track it doesn't depend on Spotify's "restart if past 3 seconds"
-rule. If a client doesn't support seeking, it falls back to skip-previous. Both are
-aimed at Spotify's own media session rather than broadcast as a global media key,
-so they can't hit a different media app.
-
-Two guards stop a single pass through the end of a track from firing repeatedly: a
-cooldown, and a requirement that playback is actually observed back near the start.
+Looptify also clears any leftover mute on startup, so a run killed mid-ad can't leave
+Spotify permanently silent.
 
 ## Troubleshooting
 
-**"waiting for Spotify..." never goes away**
-Spotify must be running *and* have played something this session — it doesn't publish
-a media session until then.
-
-**"Could not register hotkey"**
-Another application owns that combination. Change `hotkey` in `config.toml`.
-
-**An ad played anyway**
-The loop fired too late. Raise `lead_seconds` to `2.5` and try again. If you have
-Crossfade enabled, raise it above your crossfade duration.
-
-**The track cuts off noticeably early**
-Lower `lead_seconds` toward `1.0`.
-
-**Ad muting does nothing**
-`ad_markers` is empty, which is the default. See [Ad muting](#ad-muting).
-
-**It loops twice in a row**
-Raise `cooldown_seconds`. Please also open an issue — that shouldn't happen.
+| Symptom | Fix |
+|---|---|
+| `waiting for Spotify...` never clears | Spotify must be running **and** have played something this session — it doesn't publish a media session until then |
+| `Could not register hotkey` | Another app owns that combination. Change `hotkey` in `config.toml` |
+| An ad played anyway | The loop fired too late. Raise `lead_seconds` to `2.5`. With Crossfade on, raise it above your crossfade duration |
+| Track cuts off noticeably early | Lower `lead_seconds` toward `1.0` |
+| Ad muting does nothing | Check the `Ad muting:` line at startup — it names the rules that are live |
+| It loops twice in a row | Raise `cooldown_seconds`, and please [open an issue](https://github.com/FilbertNg/Looptify/issues) — that shouldn't happen |
 
 ## Scope and limitations
 
-Looptify sends documented Windows media commands and nothing else. Specifically, it
-does **not**:
+Looptify sends documented Windows media commands and nothing else. It does **not** patch,
+modify or inject into the Spotify client, block or intercept network traffic, modify audio
+streams, or touch your account, credentials or library. It automates a keypress you could
+perform by hand. That's the whole tool.
 
-- patch, modify, or inject into the Spotify client
-- block, filter, or intercept any network traffic
-- modify audio streams
-- touch your account, credentials, or library
+Spotify's terms discourage circumventing ads, so use your own judgement. If you want to
+support the artists you listen to, Premium is the direct way to do it.
 
-It automates a keypress you could perform by hand. That is the whole tool.
-
-Note that Spotify's terms discourage circumventing ads, so use your own judgement.
-If you want to support the artists you listen to, Premium is the direct way to do it.
+**v0.1.0 has only been exercised on one machine**, against the Microsoft Store build of
+Spotify, in one country. The standalone installer and other markets should work but are
+untested — [bug reports](https://github.com/FilbertNg/Looptify/issues) very welcome.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and pull requests are welcome.
+See [CONTRIBUTING.md](CONTRIBUTING.md). The design record from before implementation is
+in [docs/design/](docs/design/), if you want the reasoning behind the technical choices.
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests/
+```
 
 ## License
 

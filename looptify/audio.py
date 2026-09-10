@@ -1,9 +1,4 @@
-"""Adapter for muting Spotify's audio sessions.
-
-Measured on 2026-09-10: Spotify runs TWO audio sessions simultaneously, only
-one of which is active. Muting just the first match silently fails, so every
-matching session is muted.
-"""
+"""Mutes Spotify. It runs several audio sessions, so mute them all."""
 
 from __future__ import annotations
 
@@ -13,10 +8,9 @@ _PROCESS_NAME = "spotify.exe"
 
 
 def set_spotify_muted(muted: bool) -> int:
-    """Mute or unmute every Spotify audio session. Returns the count changed.
+    """Mute or unmute every Spotify session. Returns how many changed.
 
-    Returns 0 when Spotify has no audio sessions, which is normal when it is
-    closed or has been idle long enough for Windows to drop the session.
+    0 is normal when Spotify is closed or has been idle.
     """
     changed = 0
     for session in AudioUtilities.GetAllSessions():

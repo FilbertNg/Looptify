@@ -1,8 +1,4 @@
-"""Pure decision logic. Imports nothing platform-specific, by design.
-
-Everything here is a pure function of its arguments, which is what lets the
-whole brain be tested in CI on a machine with no Spotify and no Windows.
-"""
+"""Pure decision logic — no Windows APIs here, so it's testable without Spotify."""
 
 from __future__ import annotations
 
@@ -14,12 +10,10 @@ from looptify.models import Snapshot
 
 
 def extrapolate_position(snap: Snapshot, now: datetime) -> float:
-    """Estimate Spotify's true playback position right now, in seconds.
+    """Estimate where playback actually is, in seconds.
 
-    SMTC does not tick. It pushes an update only on events, measured at roughly
-    every 4.5 seconds, so `snap.position` can be badly stale. While playing, the
-    real position is the reported one plus the time since it was stamped. This
-    was measured accurate to about 20ms across a full 4.5s gap.
+    SMTC only pushes updates on events (~every 4.5s on Spotify), so the
+    reported position is usually stale. Add the time since it was stamped.
     """
     if not snap.is_playing:
         return snap.position
@@ -35,33 +29,11 @@ def extrapolate_position(snap: Snapshot, now: datetime) -> float:
 
 
 def is_ad(snap: Snapshot, cfg: Config) -> bool:
-    """True when this item looks like an ad rather than a track.
+    """True if this looks like an ad. Either rule alone is enough.
 
-    Two independent rules, both built from real captured ads rather than
-    guessed. Either one is enough.
-
-    **Named artists** (`ad_markers`). Spotify's own house ads report
-    `artist='Spotify'`. Matching is on the artist, exactly, and both choices
-    matter. Titles are campaign- and language-specific — two ads captured in a
-    single break were 'Dengarkan musik tanpa iklan.' and 'Nikmati musik tanpa
-    iklan.', which is Indonesian — so a title can never be a reliable marker.
-    And exact matching rather than substring is what stops legitimate releases
-    like *Spotify Singles* (1,099 tracks) or *Spotify Sessions* (Dua Lipa, Sia,
-    Twenty One Pilots) from being muted as ads.
-
-    **Structure** (`detect_ads_by_structure`). A named-artist list can only
-    ever catch Spotify's own ads; a third-party advertiser reports its own
-    brand as the artist, and no list can enumerate every advertiser. But ads
-    are structurally distinct from catalogue tracks regardless of who made
-    them: every real Spotify track belongs to a release, so it carries an
-    album and a track number, while ads carry neither and run short.
-
-        ad:    album=''            track_number=0  duration=15-30s
-        track: album='mosi mosi?'  track_number=1  duration=163.75s
-
-    All three conditions must hold, which keeps an untagged local file from
-    being muted unless it is also under `ad_max_duration_seconds`. The duration
-    must be non-zero because Spotify briefly reports zero at a track boundary.
+    By artist, matched exactly (catches Spotify's own ads), or by shape:
+    no album, no track number, and short (catches third-party advertisers,
+    whose names we can't know in advance). See "Ad muting" in the README.
     """
     artist = snap.artist.strip().lower()
     if artist:
@@ -70,6 +42,7 @@ def is_ad(snap: Snapshot, cfg: Config) -> bool:
                 return True
 
     if cfg.detect_ads_by_structure:
+        # Duration must be non-zero: Spotify reports 0 between tracks.
         if (
             not snap.album.strip()
             and snap.track_number == 0
@@ -82,14 +55,11 @@ def is_ad(snap: Snapshot, cfg: Config) -> bool:
 
 @dataclass(frozen=True)
 class LooperState:
-    """What Looptify remembers between polls.
-
-    `awaiting_restart` is set when a loop fires and cleared only once playback
-    is observed back near the start. Together with the cooldown it is what stops
-    a single pass through the lead window from firing repeatedly.
-    """
+    """What we remember between polls."""
 
     armed: bool = False
+    # Set when a loop fires, cleared once playback is seen back near the
+    # start. Stops one pass through the lead window firing repeatedly.
     awaiting_restart: bool = False
     last_fire_monotonic: float | None = None
 
@@ -112,11 +82,10 @@ def evaluate(
     now_utc: datetime,
     now_monotonic: float,
 ) -> Decision:
-    """Decide what to do about one snapshot. Pure; returns the next state.
+    """Decide what to do about one snapshot, and return the next state.
 
-    `now_monotonic` is a monotonic clock reading (time.monotonic()), used for
-    the cooldown so that a system clock change cannot break it. `now_utc` is
-    wall-clock UTC, needed because SMTC timestamps are wall-clock.
+    Takes both clocks: wall-clock to compare against SMTC's timestamps,
+    monotonic for the cooldown so changing the system clock can't break it.
     """
     est = extrapolate_position(snap, now_utc)
     remaining = snap.duration - est if snap.duration > 0 else float("inf")

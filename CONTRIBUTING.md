@@ -19,7 +19,7 @@ logic or to run the test suite.
 `looptify/logic.py` must never import `winsdk`, `pycaw`, `pywin32`, or `psutil`.
 
 All the decision-making lives there as pure functions, and all the Windows API calls
-live in thin adapters (`smtc.py`, `audio.py`, `hotkey.py`, `console.py`). That split is
+live in thin adapters (`smtc.py`, `audio.py`, `hotkey.py`, `toast.py`, `console.py`). That split is
 the only reason the test suite runs in CI on a machine with no Spotify installed, and
 the only reason the timing rules can be tested against synthetic values instead of by
 waiting three minutes for a real song to end.
