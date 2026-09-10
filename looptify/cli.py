@@ -10,11 +10,12 @@ import time
 
 from looptify.audio import set_spotify_muted
 from looptify.config import Config, load_config
-from looptify.console import enable_unicode_output
+from looptify.console import enable_unicode_output, on_console_close
 from looptify.hotkey import HotkeyListener
 from looptify.logic import Decision, LooperState, evaluate
 from looptify.models import Snapshot
 from looptify.smtc import SpotifyMonitor
+from looptify.toast import ToastNotifier
 
 
 # How many consecutive poll failures to tolerate before giving up. Transient
@@ -77,6 +78,12 @@ async def run() -> int:
 
     state = LooperState(armed=False)
     state_lock = threading.Lock()
+    quit_requested = threading.Event()
+
+    toaster = ToastNotifier(
+        enabled=cfg.show_notifications, seconds=cfg.notification_seconds
+    )
+    toaster.start()
 
     def toggle() -> None:
         nonlocal state
@@ -86,12 +93,32 @@ async def run() -> int:
                 awaiting_restart=state.awaiting_restart,
                 last_fire_monotonic=state.last_fire_monotonic,
             )
+            armed_now = state.armed
+
+        if armed_now:
+            toaster.show(
+                "Looptify Activated",
+                "This song will loop before it ends.",
+                positive=True,
+            )
+        else:
+            toaster.show(
+                "Looptify Deactivated",
+                "Songs will play through normally.",
+                positive=False,
+            )
+
+    def request_quit() -> None:
+        quit_requested.set()
 
     try:
-        listener = HotkeyListener(cfg.hotkey, toggle)
+        listener = HotkeyListener(
+            {cfg.hotkey: toggle, cfg.quit_hotkey: request_quit}
+        )
         listener.start()
     except (RuntimeError, ValueError) as exc:
         print(f"Hotkey error: {exc}", file=sys.stderr)
+        toaster.stop()
         return 2
 
     monitor = SpotifyMonitor()
@@ -102,17 +129,28 @@ async def run() -> int:
     # cause, and the fix is not discoverable.
     set_spotify_muted(False)
 
-    print(f"Looptify — press {cfg.hotkey} to arm/disarm, Ctrl+C to quit.")
-    print(f"Ad muting: {_describe_ad_detection(cfg)}")
-    print()
-
     muted = False
     last_track: tuple[str, str] | None = None
+
+    def emergency_cleanup() -> None:
+        """Run when the console window is closed, where `finally` never fires."""
+        if muted:
+            set_spotify_muted(False)
+
+    on_console_close(emergency_cleanup)
+
+    print(f"Looptify — {cfg.hotkey} to arm/disarm, {cfg.quit_hotkey} to quit.")
+    print(f"Ad muting: {_describe_ad_detection(cfg)}")
+    if not toaster.active and cfg.show_notifications:
+        print("Notifications unavailable (tkinter could not start).")
+    print()
 
     consecutive_errors = 0
 
     try:
         while True:
+            if quit_requested.is_set():
+                return 0
             try:
                 snap = await monitor.snapshot()
 
@@ -200,6 +238,7 @@ async def run() -> int:
         if muted:
             set_spotify_muted(False)
         listener.stop()
+        toaster.stop()
         print("\nStopped.")
 
 

@@ -13,6 +13,9 @@ def test_defaults_match_measured_behaviour():
     assert cfg.max_drift_seconds == 10.0
     assert cfg.poll_interval == 0.15
     assert cfg.hotkey == "ctrl+alt+l"
+    assert cfg.quit_hotkey == "ctrl+alt+q"
+    assert cfg.show_notifications is True
+    assert cfg.notification_seconds == 3.0
     assert cfg.ad_markers == ("Spotify",)
     assert cfg.detect_ads_by_structure is True
     assert cfg.ad_max_duration_seconds == 60.0

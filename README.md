@@ -61,7 +61,15 @@ or double-click `run.bat`.
 | | |
 |---|---|
 | **Ctrl+Alt+L** | Arm / disarm. Works even when Looptify isn't the focused window. |
-| **Ctrl+C** | Quit. |
+| **Ctrl+Alt+Q** | Quit. Also works from anywhere. |
+| **Ctrl+C**, or closing the window | Also quits, cleanly. |
+
+Each time you arm or disarm, a notification fades in at the corner of the screen —
+**Looptify Activated** or **Looptify Deactivated** — holds for three seconds, then
+fades out. Since Looptify otherwise runs silently in the background, that's usually
+the only way to tell what state it's in. Press the hotkey again while one is showing
+and it exits early to make way for the new one, so the notification always reflects
+the current state.
 
 **IDLE** means Looptify is watching but doing nothing — tracks play out normally.
 **ARMED** means the current song will loop indefinitely, and a countdown to the next
@@ -79,6 +87,9 @@ Edit `config.toml`. Delete any line to use its default.
 | `max_drift_seconds` | `10.0` | Ignore playback data staler than this |
 | `poll_interval` | `0.15` | How often to check, in seconds |
 | `hotkey` | `"ctrl+alt+l"` | Arm/disarm key. Modifiers: `ctrl`, `alt`, `shift`, `win` |
+| `quit_hotkey` | `"ctrl+alt+q"` | Quit key |
+| `show_notifications` | `true` | Show the on-screen arm/disarm notification |
+| `notification_seconds` | `3.0` | How long it holds, excluding fades |
 | `ad_markers` | `["Spotify"]` | Artist names identifying an ad, matched exactly |
 | `detect_ads_by_structure` | `true` | Also detect ads by shape — no album, no track number, short |
 | `ad_max_duration_seconds` | `60.0` | Longest an ad can be, for the rule above |

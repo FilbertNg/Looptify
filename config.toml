@@ -26,6 +26,19 @@ poll_interval = 0.15
 # Global hotkey to arm/disarm. Modifiers: ctrl, alt, shift, win.
 hotkey = "ctrl+alt+l"
 
+# Global hotkey to quit Looptify, so you never have to hunt for the window.
+# Closing the console window also shuts down cleanly.
+quit_hotkey = "ctrl+alt+q"
+
+# Show an on-screen notification when you arm or disarm. Since Looptify runs
+# in the background, this is usually the only way to tell what state it is in.
+show_notifications = true
+
+# How long a notification stays fully visible, in seconds, not counting its
+# fade in and fade out. Pressing the hotkey again cuts the wait short: the
+# current notification fades away and the new one takes its place.
+notification_seconds = 3.0
+
 # --- Ad detection. Two independent rules; either one is enough. ---
 
 # Rule 1: artist names that mean "this is an ad", matched against the ARTIST

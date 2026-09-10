@@ -1,6 +1,13 @@
 import pytest
 
-from looptify.hotkey import MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, parse_hotkey
+from looptify.hotkey import (
+    MOD_ALT,
+    MOD_CONTROL,
+    MOD_SHIFT,
+    MOD_WIN,
+    HotkeyListener,
+    parse_hotkey,
+)
 
 
 def test_parses_the_default_hotkey():
@@ -46,3 +53,28 @@ def test_rejects_an_unknown_token():
 def test_rejects_a_multi_character_key():
     with pytest.raises(ValueError, match="banana"):
         parse_hotkey("ctrl+banana")
+
+
+# --- listener construction (no thread started, so these are safe in CI) ---
+
+def test_listener_rejects_empty_bindings():
+    with pytest.raises(ValueError, match="at least one binding"):
+        HotkeyListener({})
+
+
+def test_listener_validates_every_spec_before_starting():
+    # A bad spec must fail at construction, not later on the hotkey thread
+    # where the error would be far harder to trace.
+    with pytest.raises(ValueError, match="no key"):
+        HotkeyListener({"ctrl+alt+l": lambda: None, "ctrl+alt": lambda: None})
+
+
+def test_listener_assigns_a_distinct_id_per_binding():
+    listener = HotkeyListener(
+        {"ctrl+alt+l": lambda: None, "ctrl+alt+q": lambda: None}
+    )
+    ids = list(listener._bindings)
+    assert len(ids) == 2
+    assert len(set(ids)) == 2
+    specs = [b[0] for b in listener._bindings.values()]
+    assert specs == ["ctrl+alt+l", "ctrl+alt+q"]
