@@ -1,7 +1,11 @@
-# Spotify Looper — Design
+# Looptify — Design
 
 **Date:** 2026-09-10
 **Status:** Approved for planning
+**Repository:** https://github.com/FilbertNg/Looptify
+
+> Drafted under the working title "Spotify Looper"; the filename preserves that for
+> git history. The project name is **Looptify**.
 
 ## Problem
 
@@ -127,7 +131,8 @@ Windows-specific I/O is confined to thin adapters. All decision logic is pure fu
 that can be unit-tested without Spotify running.
 
 ```
-spotify_looper/
+looptify/
+  __main__.py  # python -m looptify
   logic.py     # PURE: extrapolate_position(), should_loop(), is_ad(), state machine
   smtc.py      # adapter: read session, skip-previous / seek
   audio.py     # adapter: per-process mute of Spotify.exe (pycaw)
@@ -193,3 +198,81 @@ A system-tray wrapper (`pystray`) is a possible follow-up, not part of this scop
 | Ad detection false-positives, muting real music | Detector written only against captured real ad data; ships disabled until an ad is captured |
 | Store-app packaging blocks per-process mute | Verified explicitly; if blocked, fall back to muting the whole session or dropping the mute feature |
 | Looping still registers a play and triggers an ad | The manual version of this trick already works for the user, so the behaviour is established; confirmed end-to-end |
+
+---
+
+## Open-source release
+
+The project is published at `github.com/FilbertNg/Looptify` for people who are tired of
+Spotify ads and like looping a song on repeat. This phase runs **after** the tool works
+end-to-end — the README needs real screenshots and real behaviour to describe, not
+aspirational ones.
+
+### Naming
+
+The repository is **Looptify**, so the code adopts that name: package `looptify/`,
+entry point `python -m looptify`, config `config.toml` at the repo root. The working
+title "Spotify Looper" is dropped everywhere except this document's history.
+
+### Repository files
+
+| File | Purpose |
+|---|---|
+| `README.md` | The landing page. Structure below. |
+| `LICENSE` | **MIT** — recommended default for a small utility; the owner may choose otherwise before release |
+| `.gitignore` | Python: `__pycache__/`, `*.pyc`, `.venv/`, `.pytest_cache/`, `dist/`, plus a local `config.toml` override if one is added |
+| `CONTRIBUTING.md` | Short: dev setup, how to run `pytest`, what contributions are wanted |
+| `.github/workflows/tests.yml` | CI on `windows-latest` running `pytest` — the logic tests are pure, so they pass in CI without Spotify installed |
+| `docs/assets/` | Screenshot and demo GIF referenced by the README |
+
+CI is worth the small effort here: a green check on a repo that automates a media
+player is a credible signal that the logic is actually tested, and the pure-function
+split in this design is exactly what makes it possible.
+
+### README structure
+
+1. **Title, one-line pitch, badges** — license, Python version, platform
+2. **Demo** — a GIF of the console showing the countdown and the loop firing at the
+   boundary. This is the single most persuasive element; it goes near the top.
+3. **What it does** — the manual previous-button trick, automated, with the timing
+   explained in two sentences
+4. **Requirements** — Windows 10/11, Python 3.10+, Spotify desktop (Store or standalone
+   build), no Premium and no Spotify developer account
+5. **Install** — clone, `pip install -r requirements.txt`, `run.bat`
+6. **Usage** — Ctrl+Alt+L to arm, what ARMED and IDLE mean, reading the console output
+7. **Configuration** — table of every key in `config.toml`, including the explicit
+   warning that Crossfade requires raising `lead_seconds` above the crossfade duration
+8. **How it works** — SMTC as the data source, why position must be extrapolated from
+   `LastUpdatedTime`, why `TrySkipPreviousAsync` on the Spotify session beats a global
+   media key. Written for a developer skimming to judge whether the approach is sound.
+9. **Troubleshooting** — Spotify not detected, hotkey already taken by another app,
+   loop firing too early or too late, ad muting doing nothing because `ad_markers` is
+   still empty
+10. **Scope and limitations** — stated plainly: Looptify sends documented Windows media
+    commands and nothing else. It does not patch or modify the Spotify client, inject
+    into its process, block network requests, or alter audio streams. It automates a
+    keypress the user could perform by hand. Note that Spotify's terms discourage
+    circumventing ads, and that Premium remains the way to support artists directly.
+    This section is honesty first, and it also stops the repo from reading as an
+    ad-blocker, which it technically is not.
+11. **Contributing** and **License**
+
+### GitHub-side presentation
+
+- **About / description:** one line, e.g. "Loops the current Spotify track just before
+  it ends, so the post-track ad never fires. Windows, Python, no Premium needed."
+- **Topics:** `spotify`, `windows`, `python`, `automation`, `smtc`, `media-controls`,
+  `loop`, `no-ads`
+- **Release `v0.1.0`** tagged once the end-to-end verification passes
+- **Issue templates:** one bug-report template asking for Windows version, Spotify build
+  (Store vs standalone), and the console output — the three things needed to diagnose
+  anything here. A feature template is not worth it at this size.
+- Commit style stays conventional (`feat:`, `fix:`, `docs:`), matching the existing
+  `docs: plan` commit.
+
+### Ordering
+
+Repository polish is the final phase of the implementation plan. The README's demo GIF,
+screenshots, troubleshooting entries, and the populated `ad_markers` list all depend on
+having run the tool against real playback, so writing them earlier would mean writing
+them twice.
