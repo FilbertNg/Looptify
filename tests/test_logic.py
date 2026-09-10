@@ -1,6 +1,15 @@
 from datetime import datetime, timedelta, timezone
 
-from looptify.logic import extrapolate_position, is_ad
+import pytest
+
+from looptify.config import Config
+from looptify.logic import (
+    Decision,
+    LooperState,
+    evaluate,
+    extrapolate_position,
+    is_ad,
+)
 from looptify.models import Snapshot
 
 T0 = datetime(2026, 9, 10, 9, 42, 40, tzinfo=timezone.utc)
@@ -90,3 +99,110 @@ def test_track_with_blank_metadata_does_not_match():
 def test_empty_marker_string_is_ignored():
     # An empty string is a substring of everything; it must not match all.
     assert is_ad(snap(), ("",)) is False
+
+
+CFG = Config()
+
+
+def ev(state=None, now_offset=0.0, mono=100.0, cfg=CFG, **snap_kw) -> Decision:
+    """Evaluate a snapshot `now_offset` seconds after it was stamped."""
+    return evaluate(
+        snap(**snap_kw),
+        state if state is not None else LooperState(armed=True),
+        cfg,
+        T0 + timedelta(seconds=now_offset),
+        mono,
+    )
+
+
+def test_fires_inside_the_lead_window():
+    # 170.584 duration, stamped at 169.0, so remaining is 1.584 -> 1.084.
+    d = ev(position=169.0, now_offset=0.5)
+    assert d.fire_loop is True
+    assert d.remaining == pytest.approx(1.084, abs=1e-3)
+
+
+def test_does_not_fire_outside_the_lead_window():
+    assert ev(position=100.0).fire_loop is False
+
+
+def test_does_not_fire_when_disarmed():
+    d = ev(state=LooperState(armed=False), position=169.5)
+    assert d.fire_loop is False
+
+
+def test_does_not_fire_when_paused():
+    d = ev(position=169.5, is_playing=False)
+    assert d.fire_loop is False
+
+
+def test_does_not_fire_on_unknown_duration():
+    d = ev(position=169.5, duration=0.0)
+    assert d.fire_loop is False
+    assert d.remaining == float("inf")
+
+
+def test_does_not_fire_on_an_ad():
+    cfg = Config(ad_markers=("advertisement",))
+    d = ev(cfg=cfg, position=169.5, title="Advertisement")
+    assert d.fire_loop is False
+    assert d.should_mute is True
+
+
+def test_does_not_fire_when_data_is_too_stale():
+    # 30s of drift means Spotify stopped reporting; refuse to guess.
+    d = ev(position=169.5, now_offset=30.0)
+    assert d.fire_loop is False
+
+
+def test_firing_sets_awaiting_restart_and_stamps_the_time():
+    d = ev(position=169.5, mono=500.0)
+    assert d.fire_loop is True
+    assert d.state.awaiting_restart is True
+    assert d.state.last_fire_monotonic == 500.0
+    assert d.state.armed is True
+
+
+def test_does_not_fire_twice_while_awaiting_restart():
+    first = ev(position=169.5, mono=500.0)
+    # Still near the end, cooldown already elapsed, but no restart seen yet.
+    second = evaluate(
+        snap(position=169.8), first.state, CFG,
+        T0 + timedelta(seconds=10), 510.0,
+    )
+    assert second.fire_loop is False
+    assert second.state.awaiting_restart is True
+
+
+def test_does_not_fire_again_within_cooldown_even_after_restart():
+    fired = ev(position=169.5, mono=500.0)
+    # Playback restarted, so awaiting_restart clears...
+    restarted = evaluate(snap(position=0.5), fired.state, CFG, T0, 500.5)
+    assert restarted.state.awaiting_restart is False
+    # ...but back at the boundary only 2s later, the 3s cooldown still blocks.
+    # This is the case where awaiting_restart alone would NOT have saved us.
+    too_soon = evaluate(snap(position=169.5), restarted.state, CFG, T0, 502.0)
+    assert too_soon.fire_loop is False
+
+
+def test_rearms_after_restart_and_cooldown():
+    first = ev(position=169.5, mono=500.0)
+    restarted = evaluate(snap(position=1.0), first.state, CFG, T0, 505.0)
+    assert restarted.state.awaiting_restart is False
+
+    near_end_again = evaluate(snap(position=169.5), restarted.state, CFG, T0, 600.0)
+    assert near_end_again.fire_loop is True
+
+
+def test_mute_is_reported_even_when_disarmed():
+    cfg = Config(ad_markers=("advertisement",))
+    d = ev(state=LooperState(armed=False), cfg=cfg, title="Advertisement")
+    assert d.should_mute is True
+    assert d.fire_loop is False
+
+
+def test_state_is_not_mutated_in_place():
+    original = LooperState(armed=True)
+    ev(state=original, position=169.5)
+    assert original.awaiting_restart is False
+    assert original.last_fire_monotonic is None
