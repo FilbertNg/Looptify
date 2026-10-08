@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from looptify.config import Config, load_config
+from looptify.playlist import Mode
 
 
 def test_defaults_match_measured_behaviour():
@@ -69,3 +70,29 @@ def test_ad_detection_can_be_turned_off_entirely(tmp_path: Path):
     cfg = load_config(p)
     assert cfg.ad_markers == ()
     assert cfg.detect_ads_by_structure is False
+
+
+def test_playlist_mode_defaults():
+    cfg = Config()
+    assert cfg.mode is Mode.LOOP
+    assert cfg.mode_hotkey == "ctrl+alt+shift+l"
+
+
+def test_loads_mode(tmp_path: Path):
+    p = tmp_path / "config.toml"
+    p.write_text('mode = "shuffle_loop"\n', encoding="utf-8")
+    assert load_config(p).mode is Mode.SHUFFLE_LOOP
+
+
+def test_unknown_mode_is_rejected(tmp_path: Path):
+    p = tmp_path / "config.toml"
+    p.write_text('mode = "shuffle"\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="mode must be one of"):
+        load_config(p)
+
+
+def test_mode_hotkey_must_differ_from_hotkey(tmp_path: Path):
+    p = tmp_path / "config.toml"
+    p.write_text('mode_hotkey = "Alt+Ctrl+L"\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="must be different"):
+        load_config(p)

@@ -26,6 +26,20 @@ poll_interval = 0.15
 # Global hotkey to arm/disarm. Modifiers: ctrl, alt, shift, win.
 hotkey = "ctrl+alt+l"
 
+# What happens just before a song ends:
+#   "loop"          restart the same song (the original behaviour)
+#   "in_order"      play the next row of the open playlist; after the last, row 1
+#   "shuffle_loop"  play a random row not yet played; repeats only once every
+#                   row has played
+#   "pure_random"   play any row at random, possibly the same song again
+# The playlist modes press the row's own play button in Spotify, which, like a
+# manual click, avoids the ad. They need Spotify started with extra flags, so
+# Looptify restarts Spotify once, the first time a playlist mode is active.
+mode = "loop"
+
+# Global hotkey that cycles loop -> in_order -> shuffle_loop -> pure_random.
+mode_hotkey = "ctrl+alt+shift+l"
+
 # Start already armed, so opening Looptify immediately loops whatever is
 # playing. Set to false if you would rather arm it yourself each time.
 start_armed = true
