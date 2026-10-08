@@ -94,9 +94,12 @@ minimized window stops drawing, so Looptify can't scroll to a row that isn't loa
 and loops the current song instead. In Order mostly still works, because the next row is
 usually already loaded.
 
-**Focus flickers for a few milliseconds.** Pressing a row makes Spotify grab the keyboard
-focus, and Looptify hands it straight back — about 5–10 ms in testing. A key pressed in
-exactly that moment goes to Spotify, and a game in exclusive fullscreen may minimize.
+**Spotify stays hidden, but focus blinks for a few milliseconds.** Pressing a row makes
+Spotify jump to the front and grab the keyboard focus. Looptify makes Spotify's window
+invisible for that moment, so nothing shows on screen, and hands focus straight back —
+about 4–12 ms in testing. A key pressed in exactly that moment goes to Spotify, and a
+game in exclusive fullscreen may minimize. If Looptify is killed mid-press, it un-hides
+Spotify the next time it starts.
 
 Looptify picks the next row as soon as a song starts, and scrolls Spotify's list to it in
 the background while the song plays, so it's ready long before the end. Whenever anything

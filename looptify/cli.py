@@ -13,6 +13,7 @@ from concurrent.futures import Future
 from looptify.audio import set_spotify_muted
 from looptify.config import Config, load_config
 from looptify.console import enable_unicode_output, on_console_close
+from looptify.focus import reveal_spotify
 from looptify.hotkey import HotkeyListener
 from looptify.launcher import needs_relaunch, relaunch, spotify_pids
 from looptify.logic import Decision, LooperState, evaluate
@@ -156,8 +157,10 @@ async def run() -> int:
     worker = TracklistWorker()
     worker.start()
 
-    # A previous run killed mid-ad would have left Spotify muted.
+    # A previous run killed mid-ad would have left Spotify muted, and one
+    # killed mid-press would have left its window hidden.
     set_spotify_muted(False)
+    reveal_spotify()
 
     muted = False
     last_track: tuple[str, str] | None = None
@@ -171,6 +174,7 @@ async def run() -> int:
         """Run when the console window is closed, where `finally` never fires."""
         if muted:
             set_spotify_muted(False)
+        reveal_spotify()
 
     on_console_close(emergency_cleanup)
 
@@ -348,6 +352,7 @@ async def run() -> int:
         if muted:
             set_spotify_muted(False)
         worker.stop()
+        reveal_spotify()
         listener.stop()
         toaster.stop()
         print("\nStopped.")

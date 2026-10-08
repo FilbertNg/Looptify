@@ -50,6 +50,29 @@ def spotify_pids() -> set[int]:
     return {proc.pid for proc in _spotify_processes()}
 
 
+def spotify_window() -> int:
+    """Spotify's main window: visible, titled, owned by a Spotify.exe process.
+
+    Returns 0 when Spotify isn't running or has no window.
+    """
+    pids = spotify_pids()
+    if not pids:
+        return 0
+    found: list[int] = []
+
+    def visit(hwnd: int, _: object) -> None:
+        if (
+            win32gui.IsWindowVisible(hwnd)
+            and win32gui.GetClassName(hwnd) == "Chrome_WidgetWin_1"
+            and win32gui.GetWindowText(hwnd)
+            and win32process.GetWindowThreadProcessId(hwnd)[1] in pids
+        ):
+            found.append(hwnd)
+
+    win32gui.EnumWindows(visit, None)
+    return found[0] if found else 0
+
+
 def needs_relaunch() -> bool:
     """True unless Spotify is running with every flag in REQUIRED_FLAGS."""
     # An unreadable command line comes back empty, which counts as unflagged.

@@ -18,7 +18,12 @@ from pathlib import Path
 # so the package would not be importable without this.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import win32con  # noqa: E402
+import win32gui  # noqa: E402
+
 from looptify.console import enable_unicode_output  # noqa: E402
+from looptify.focus import _has_region  # noqa: E402
+from looptify.launcher import spotify_window  # noqa: E402
 from looptify.planner import Locate, Prepare  # noqa: E402
 from looptify.smtc import SpotifyMonitor  # noqa: E402
 from looptify.tracklist import TracklistStatus, TracklistWorker  # noqa: E402
@@ -34,6 +39,16 @@ def wait_for(worker: TracklistWorker, ready, timeout: float) -> TracklistStatus:
             return status
         time.sleep(0.1)
     return worker.status()
+
+
+def _above(a: int, b: int) -> bool:
+    """True if window a is above window b in the z-order."""
+    window = win32gui.GetWindow(b, win32con.GW_HWNDPREV)
+    while window:
+        if window == a:
+            return True
+        window = win32gui.GetWindow(window, win32con.GW_HWNDPREV)
+    return False
 
 
 async def now_playing() -> tuple[str, str] | None:
@@ -81,10 +96,17 @@ def main() -> None:
         )
 
         if args.play and status.ready_row == args.row:
+            user_window = win32gui.GetForegroundWindow()
             pressed = worker.press().result(timeout=5)
             time.sleep(2.0)
             print(f"pressed={pressed} focus_reclaim_ms={worker.focus_reclaim_ms}")
             print(f"now playing: {asyncio.run(now_playing())}")
+            spotify = spotify_window()
+            print(
+                f"spotify restored: hidden={_has_region(spotify)} "
+                f"in front of your window={_above(spotify, user_window)} "
+                f"focus back={win32gui.GetForegroundWindow() == user_window}"
+            )
     finally:
         worker.stop()
 

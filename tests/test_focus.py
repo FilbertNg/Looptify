@@ -1,4 +1,4 @@
-from looptify.focus import should_reclaim
+from looptify.focus import restack_anchor, should_hide, should_reclaim
 
 SPOTIFY = {100, 101}
 
@@ -34,3 +34,35 @@ def test_leaves_focus_alone_when_the_original_window_closed():
 
 def test_nothing_to_do_while_focus_is_unchanged():
     assert not reclaim(current=1, current_pid=50)
+
+
+def test_hides_spotify_behind_the_users_window():
+    assert should_hide(spotify=9, foreground=1, minimized=False)
+
+
+def test_does_not_hide_a_minimized_spotify():
+    # Nothing would show anyway, and the steal goes to a hidden window.
+    assert not should_hide(spotify=9, foreground=1, minimized=True)
+
+
+def test_does_not_hide_spotify_while_the_user_is_in_it():
+    # Hiding the window being looked at would cause the flicker it prevents.
+    assert not should_hide(spotify=9, foreground=9, minimized=False)
+
+
+def test_does_not_hide_without_a_spotify_window():
+    assert not should_hide(spotify=0, foreground=1, minimized=False)
+
+
+def test_restack_anchor_is_the_nearest_window_above():
+    assert restack_anchor([(5, False), (6, False)]) == 5
+
+
+def test_restack_anchor_skips_always_on_top_windows():
+    # Slotting under a topmost window would make Spotify topmost too.
+    assert restack_anchor([(5, True), (6, False)]) == 6
+
+
+def test_restack_anchor_none_when_nothing_ordinary_is_above():
+    assert restack_anchor([(5, True)]) is None
+    assert restack_anchor([]) is None

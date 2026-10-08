@@ -19,11 +19,9 @@ from dataclasses import dataclass, replace
 
 import comtypes
 import comtypes.client
-import win32gui
-import win32process
 
 from looptify.focus import FocusGuard
-from looptify.launcher import spotify_pids
+from looptify.launcher import spotify_window
 from looptify.planner import Action, Cancel, Locate, Prepare
 from looptify.playlist import PageInfo, RowText, find_row, step_toward
 
@@ -112,26 +110,6 @@ def _read_row(walker, element) -> tuple[int, _Row] | None:
     if title_cell:
         text = RowText(title_cell.CurrentName or "", _link_names(walker, title_cell))
     return item.CurrentRow, _Row(button, text)
-
-
-def _spotify_window() -> int:
-    """Spotify's main window: visible, titled, owned by a Spotify.exe process."""
-    pids = spotify_pids()
-    if not pids:
-        return 0
-    found: list[int] = []
-
-    def visit(hwnd: int, _: object) -> None:
-        if (
-            win32gui.IsWindowVisible(hwnd)
-            and win32gui.GetClassName(hwnd) == "Chrome_WidgetWin_1"
-            and win32gui.GetWindowText(hwnd)
-            and win32process.GetWindowThreadProcessId(hwnd)[1] in pids
-        ):
-            found.append(hwnd)
-
-    win32gui.EnumWindows(visit, None)
-    return found[0] if found else 0
 
 
 class TracklistWorker:
@@ -259,7 +237,7 @@ class TracklistWorker:
 
     def _refresh_page(self) -> None:
         uia = self._uia
-        hwnd = _spotify_window()
+        hwnd = spotify_window()
         if not hwnd:
             self._show_page(None, exposed=False)
             return
@@ -393,13 +371,17 @@ class TracklistWorker:
         target, row = self._target, self._ready
         if target is None or self._grid is None:
             return False
+        guarded = False
         for _ in range(2):
             try:
                 if row is None:
                     row = self._rows().get(target)
                     if row is None:
                         return False
-                self._guard.protect()
+                # Once only: a second guard would hide Spotify twice.
+                if not guarded:
+                    self._guard.protect()
+                    guarded = True
                 _invoke(row.button)
             except _STALE:
                 row = None
