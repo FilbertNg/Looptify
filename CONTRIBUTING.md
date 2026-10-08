@@ -2,6 +2,10 @@
 
 Thanks for taking a look. Bug reports and pull requests are both welcome.
 
+Start with [How Looptify works](docs/how-it-works.md) for the internals and known
+limitations. The design records in [docs/design/](docs/design/) explain the reasoning
+behind the technical choices.
+
 ## Setup
 
 ```bash
