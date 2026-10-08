@@ -4,7 +4,7 @@
 
 # Looptify
 
-**Loops the current Spotify track just before it ends, so the post-track ad never fires.**
+**Loops the current Spotify track — or moves on through your playlist — just before it ends, so the post-track ad never fires.**
 
 [![tests](https://github.com/FilbertNg/Looptify/actions/workflows/tests.yml/badge.svg)](https://github.com/FilbertNg/Looptify/actions/workflows/tests.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -51,6 +51,7 @@ Start Spotify, play something, then run `python -m looptify` — or double-click
 | | |
 |---|---|
 | **Ctrl+Alt+L** | Arm / disarm, from anywhere — Looptify doesn't need focus |
+| **Ctrl+Alt+Shift+L** | Change mode: Loop → In Order → Shuffle Loop → Pure Random |
 | **Ctrl+C**, or closing the window | Quit, cleanly |
 
 Every time you arm or disarm, a notification fades in at the corner of the screen —
@@ -61,6 +62,46 @@ way to tell what state it's in.
 **ARMED** loops the current song indefinitely and shows a countdown to the next loop.
 Skip to a different song and it loops that one instead. **IDLE** just watches; tracks
 play out normally.
+
+## Playlist modes
+
+Looping isn't the only ad-free move. Starting a *different* song from its row — the play
+button that appears when you hover a row's number — also stops the current one before it
+finishes, so no ad plays. Looptify can do that for you:
+
+| Mode | Just before the song ends |
+|---|---|
+| **Loop** | Restart the same song (the default) |
+| **In Order** | Play the next row; after the last row, row 1 |
+| **Shuffle Loop** | Play a random row you haven't heard this cycle — nothing repeats until every row has played |
+| **Pure Random** | Play any row at random, which can be the same song again |
+
+Press **Ctrl+Alt+Shift+L** to cycle through them — a notification names the new one — or
+set `mode` in `config.toml` to choose the starting mode. Spotify's own Next button can't
+do this: it counts as a skip, and the ad still plays.
+
+**Spotify restarts once.** Spotify hides its page from Windows automation unless it's
+started with three extra flags. The first time a playlist mode is active, Looptify closes
+Spotify and starts it again with them — a few seconds of silence, then press play. Loop
+mode never restarts Spotify.
+
+**Keep the playlist open.** Looptify presses rows in whatever tracklist Spotify is
+showing. Open another playlist and the next song comes from that one. On a page with no
+tracklist, like Home or Search, it loops the current song instead.
+
+**Don't minimize Spotify.** Covered by other windows or on another monitor is fine, but a
+minimized window stops drawing, so Looptify can't scroll to a row that isn't loaded yet,
+and loops the current song instead. In Order mostly still works, because the next row is
+usually already loaded.
+
+**Focus flickers for a few milliseconds.** Pressing a row makes Spotify grab the keyboard
+focus, and Looptify hands it straight back — about 5–10 ms in testing. A key pressed in
+exactly that moment goes to Spotify, and a game in exclusive fullscreen may minimize.
+
+Looptify picks the next row as soon as a song starts, and scrolls Spotify's list to it in
+the background while the song plays, so it's ready long before the end. Whenever anything
+isn't ready at the 1.5-second mark, it loops the current song instead: a playlist mode
+can fall back, but it never lets the ad through.
 
 ## How it works
 
@@ -98,16 +139,34 @@ than broadcasting a global media key, so neither can hit a different media app.
 Two guards stop one pass through the end of a track from firing repeatedly: a cooldown,
 and a requirement that playback is actually observed back near the start.
 
+#### Moving to another song
+
+Looptify presses a row's play button through **Windows UI Automation**, the accessibility
+API that screen readers use. Spotify only exposes its page to it when started with
+`--force-renderer-accessibility=complete` and `--enable-features=UiaProvider`. A third
+flag, `--disable-features=CalculateNativeWinOcclusion`, keeps Spotify drawing while it's
+covered, which its list needs in order to scroll.
+
+The list only holds the rows near its scroll position, so playing row 900 of 966 means
+scrolling there first — about half a second per screen of rows, using the one scroll
+method that never brings Spotify to the front. That's why the next row is chosen when a
+song starts, not when it ends.
+
 #### Structure
 
-Every Windows API call lives in a thin adapter; every decision lives in one pure module.
+Every Windows API call lives in a thin adapter; every decision lives in a pure module.
 
 ```
 looptify/
 ├── logic.py     ← pure: extrapolation, ad detection, the fire decision
+├── playlist.py  ← pure: the modes, and which row comes next
+├── planner.py   ← pure: when to find, prepare and press a row
 ├── smtc.py         adapter: read playback state, seek
+├── tracklist.py    adapter: scroll and press rows in Spotify's tracklist
+├── focus.py        adapter: hand keyboard focus back after a press
+├── launcher.py     adapter: start Spotify with the flags it needs
 ├── audio.py        adapter: mute Spotify
-├── hotkey.py       adapter: global hotkey
+├── hotkey.py       adapter: global hotkeys
 ├── toast.py        adapter: on-screen notifications
 ├── console.py      adapter: encoding, clean shutdown
 └── cli.py          poll loop and wiring
@@ -129,6 +188,8 @@ Edit `config.toml`. Delete any line to use its default.
 | `max_drift_seconds` | `10.0` | Ignore playback data staler than this |
 | `poll_interval` | `0.15` | How often to check, in seconds |
 | `hotkey` | `"ctrl+alt+l"` | Arm/disarm key. Modifiers: `ctrl`, `alt`, `shift`, `win` |
+| `mode` | `"loop"` | Starting mode: `"loop"`, `"in_order"`, `"shuffle_loop"` or `"pure_random"` |
+| `mode_hotkey` | `"ctrl+alt+shift+l"` | Cycles the mode. Must differ from `hotkey` |
 | `start_armed` | `true` | Begin looping as soon as Looptify opens |
 | `show_notifications` | `true` | Show the on-screen arm/disarm notification |
 | `notification_seconds` | `3.0` | How long it holds, excluding fades |
@@ -192,25 +253,32 @@ Spotify permanently silent.
 | Symptom | Fix |
 |---|---|
 | `waiting for Spotify...` never clears | Spotify must be running **and** have played something this session — it doesn't publish a media session until then |
-| `Could not register hotkey` | Another app owns that combination. Change `hotkey` in `config.toml` |
+| `Could not register hotkey` | Another app owns that combination. Change `hotkey` or `mode_hotkey` in `config.toml` |
 | An ad played anyway | The loop fired too late. Raise `lead_seconds` to `2.5`. With Crossfade on, raise it above your crossfade duration |
 | Track cuts off noticeably early | Lower `lead_seconds` toward `1.0` |
 | Ad muting does nothing | Check the `Ad muting:` line at startup — it names the rules that are live |
 | It loops twice in a row | Raise `cooldown_seconds`, and please [open an issue](https://github.com/FilbertNg/Looptify/issues) — that shouldn't happen |
+| `[next] no tracklist on the open Spotify page` | Open the playlist you're playing from in Spotify |
+| `[next] row N isn't loaded yet` or `still finding the playing song` | Spotify is minimized — restore it. Covered by other windows is fine |
+| A playlist mode always loops | Spotify was started without its flags, e.g. you restarted it yourself. Restart Looptify, which restarts Spotify with them |
 
 ## Scope and limitations
 
-Looptify sends documented Windows media commands and nothing else. It does **not** patch,
-modify or inject into the Spotify client, block or intercept network traffic, modify audio
-streams, or touch your account, credentials or library. It automates a keypress you could
-perform by hand. That's the whole tool.
+In Loop mode, Looptify sends documented Windows media commands and nothing else. The
+playlist modes also start Spotify with three Chromium command-line flags and press its
+play buttons through Windows UI Automation, the accessibility API screen readers use.
+Looptify does **not** patch, modify or inject into the Spotify client, block or intercept
+network traffic, modify audio streams, or touch your account, credentials or library. It
+automates clicks and keypresses you could make by hand. That's the whole tool.
 
 Spotify's terms discourage circumventing ads, so use your own judgement. If you want to
 support the artists you listen to, Premium is the direct way to do it.
 
 **v0.1.0 has only been exercised on one machine**, against the Microsoft Store build of
 Spotify, in one country. The standalone installer and other markets should work but are
-untested — [bug reports](https://github.com/FilbertNg/Looptify/issues) very welcome.
+untested — [bug reports](https://github.com/FilbertNg/Looptify/issues) very welcome. The
+playlist modes were built against a 966-song Liked Songs list; regular playlists and
+albums use the same tracklist and should behave the same, but are untested.
 
 ## Contributing
 
