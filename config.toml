@@ -38,7 +38,7 @@ hotkey = "ctrl+alt+l"
 mode = "loop"
 
 # Global hotkey that cycles loop -> in_order -> shuffle_loop -> pure_random.
-mode_hotkey = "ctrl+alt+m"
+mode_hotkey = "ctrl+alt+shift+l"
 
 # Start already armed, so opening Looptify immediately loops whatever is
 # playing. Set to false if you would rather arm it yourself each time.

@@ -185,7 +185,7 @@ matches SMTC's title and first artist against row names: first the rendered rows
 the rest of the list in the background. If no row matches, the current row is unknown.
 
 **Mode switching.** `mode` in config.toml sets the starting mode (default `"loop"`).
-`mode_hotkey` (default `"ctrl+alt+m"`) cycles Loop → In Order → Shuffle Loop →
+`mode_hotkey` (default `"ctrl+alt+shift+l"`; `ctrl+alt+m` was the first choice but another app owned it on the development machine) cycles Loop → In Order → Shuffle Loop →
 Pure Random → Loop, and a toast names the new mode ("Mode: Shuffle Loop").
 
 ### Tracklist worker (`tracklist.py`)
@@ -260,7 +260,7 @@ one console line naming the reason.
 | Key | Default | Meaning |
 |---|---|---|
 | `mode` | `"loop"` | Starting mode: `loop`, `in_order`, `shuffle_loop`, `pure_random` |
-| `mode_hotkey` | `"ctrl+alt+m"` | Cycles the mode |
+| `mode_hotkey` | `"ctrl+alt+shift+l"` | Cycles the mode |
 
 An unknown `mode` value is a config error at startup, consistent with how unknown keys
 are handled.

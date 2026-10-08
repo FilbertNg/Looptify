@@ -21,7 +21,7 @@ class Config:
     poll_interval: float = 0.15
     hotkey: str = "ctrl+alt+l"
     mode: Mode = Mode.LOOP
-    mode_hotkey: str = "ctrl+alt+m"
+    mode_hotkey: str = "ctrl+alt+shift+l"
     start_armed: bool = True
     show_notifications: bool = True
     notification_seconds: float = 3.0

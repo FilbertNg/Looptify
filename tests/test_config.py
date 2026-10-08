@@ -75,7 +75,7 @@ def test_ad_detection_can_be_turned_off_entirely(tmp_path: Path):
 def test_playlist_mode_defaults():
     cfg = Config()
     assert cfg.mode is Mode.LOOP
-    assert cfg.mode_hotkey == "ctrl+alt+m"
+    assert cfg.mode_hotkey == "ctrl+alt+shift+l"
 
 
 def test_loads_mode(tmp_path: Path):
