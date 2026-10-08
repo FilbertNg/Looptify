@@ -16,10 +16,12 @@ logic or to run the test suite.
 
 ## The one architectural rule
 
-`looptify/logic.py` must never import `winsdk`, `pycaw`, `pywin32`, or `psutil`.
+`looptify/logic.py`, `playlist.py` and `planner.py` must never import `winsdk`,
+`pycaw`, `pywin32`, `comtypes` or `psutil`.
 
 All the decision-making lives there as pure functions, and all the Windows API calls
-live in thin adapters (`smtc.py`, `audio.py`, `hotkey.py`, `toast.py`, `console.py`). That split is
+live in thin adapters (`smtc.py`, `audio.py`, `hotkey.py`, `toast.py`, `console.py`,
+`tracklist.py`, `focus.py`, `launcher.py`). That split is
 the only reason the test suite runs in CI on a machine with no Spotify installed, and
 the only reason the timing rules can be tested against synthetic values instead of by
 waiting three minutes for a real song to end.
@@ -40,7 +42,13 @@ manual verification scripts instead:
 python scripts/verify_smtc.py     # read-only; watch position extrapolation work
 python scripts/verify_hotkey.py   # press the hotkey, confirm it fires
 python scripts/verify_audio.py    # mutes and unmutes Spotify, and times it
+python scripts/verify_tracklist.py 120 --play   # scrolls to row 120 and presses it
 ```
+
+`verify_tracklist.py` needs Spotify started with the playlist-mode flags
+(`launcher.REQUIRED_FLAGS`) and a playlist open. Never scroll Spotify with
+`ScrollPattern.SetScrollPercent` or `Scroll`: both bring Spotify to the front.
+`ScrollItemPattern.ScrollIntoView` is the one that stays in the background.
 
 If you change timing behaviour, please add a case to `tests/test_logic.py` alongside
 the existing ones. The measured constants in those tests (the 4.489 s staleness, the
