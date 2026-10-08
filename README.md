@@ -274,7 +274,7 @@ automates clicks and keypresses you could make by hand. That's the whole tool.
 Spotify's terms discourage circumventing ads, so use your own judgement. If you want to
 support the artists you listen to, Premium is the direct way to do it.
 
-**v0.1.0 has only been exercised on one machine**, against the Microsoft Store build of
+**Looptify has only been exercised on one machine**, against the Microsoft Store build of
 Spotify, in one country. The standalone installer and other markets should work but are
 untested — [bug reports](https://github.com/FilbertNg/Looptify/issues) very welcome. The
 playlist modes were built against a 966-song Liked Songs list; regular playlists and
