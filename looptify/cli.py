@@ -4,18 +4,32 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import random
 import sys
 import threading
 import time
+from concurrent.futures import Future
 
 from looptify.audio import set_spotify_muted
 from looptify.config import Config, load_config
 from looptify.console import enable_unicode_output, on_console_close
 from looptify.hotkey import HotkeyListener
+from looptify.launcher import needs_relaunch, relaunch, spotify_pids
 from looptify.logic import Decision, LooperState, evaluate
 from looptify.models import Snapshot
+from looptify.planner import (
+    Plan,
+    clear_press,
+    fallback_reason,
+    mark_pressed,
+    rechoose,
+    should_rescue,
+)
+from looptify.planner import step as plan_step
+from looptify.playlist import MODE_BLURBS, MODE_LABELS, Mode, next_mode
 from looptify.smtc import SpotifyMonitor
 from looptify.toast import ToastNotifier
+from looptify.tracklist import TracklistWorker
 
 
 # Ride out transient media-API hiccups, but don't spin forever on a real fault.
@@ -28,8 +42,23 @@ def _format_time(seconds: float) -> str:
     return f"{int(seconds) // 60}:{int(seconds) % 60:02d}"
 
 
+def _mode_suffix(mode: Mode, plan: Plan, ready_row: int | None) -> str:
+    """The mode, and the row lined up next: '  Shuffle Loop → #212 ✓'."""
+    if mode is Mode.LOOP:
+        return ""
+    label = MODE_LABELS[mode]
+    if plan.target is None:
+        return f"  {label}"
+    mark = "✓" if ready_row == plan.target else "…"
+    return f"  {label} → #{plan.target} {mark}"
+
+
 def _status_line(
-    state: LooperState, snap: Snapshot | None, decision: Decision | None
+    state: LooperState,
+    snap: Snapshot | None,
+    decision: Decision | None,
+    mode: Mode = Mode.LOOP,
+    suffix: str = "",
 ) -> str:
     armed = "ARMED " if state.armed else "IDLE  "
     if snap is None or decision is None:
@@ -41,15 +70,16 @@ def _status_line(
 
     playing = "▶" if snap.is_playing else "⏸"
     remaining = decision.remaining
+    verb = "loop" if mode is Mode.LOOP else "next"
     countdown = (
-        f"loop in {remaining:5.1f}s"
+        f"{verb} in {remaining:5.1f}s"
         if state.armed and remaining != float("inf")
         else " " * 13
     )
     return (
         f"[{armed}] {playing} {track:<42} "
         f"{_format_time(decision.est_position)}/{_format_time(snap.duration)} "
-        f"{countdown}"
+        f"{countdown}{suffix}"
     )
 
 
@@ -76,6 +106,7 @@ async def run() -> int:
         return 2
 
     state = LooperState(armed=cfg.start_armed)
+    mode = cfg.mode
     state_lock = threading.Lock()
 
     toaster = ToastNotifier(
@@ -92,13 +123,10 @@ async def run() -> int:
                 last_fire_monotonic=state.last_fire_monotonic,
             )
             armed_now = state.armed
+            mode_now = mode
 
         if armed_now:
-            toaster.show(
-                "Looptify Activated",
-                "This song will loop before it ends.",
-                positive=True,
-            )
+            toaster.show("Looptify Activated", MODE_BLURBS[mode_now], positive=True)
         else:
             toaster.show(
                 "Looptify Deactivated",
@@ -106,8 +134,17 @@ async def run() -> int:
                 positive=False,
             )
 
+    def cycle_mode() -> None:
+        nonlocal mode
+        with state_lock:
+            mode = next_mode(mode)
+            mode_now = mode
+        toaster.show(
+            f"Mode: {MODE_LABELS[mode_now]}", MODE_BLURBS[mode_now], positive=True
+        )
+
     try:
-        listener = HotkeyListener({cfg.hotkey: toggle})
+        listener = HotkeyListener({cfg.hotkey: toggle, cfg.mode_hotkey: cycle_mode})
         listener.start()
     except (RuntimeError, ValueError) as exc:
         print(f"Hotkey error: {exc}", file=sys.stderr)
@@ -116,12 +153,19 @@ async def run() -> int:
 
     monitor = SpotifyMonitor()
     await monitor.connect()
+    worker = TracklistWorker()
+    worker.start()
 
     # A previous run killed mid-ad would have left Spotify muted.
     set_spotify_muted(False)
 
     muted = False
     last_track: tuple[str, str] | None = None
+    plan = Plan()
+    rng = random.Random()
+    flags_checked = False
+    press: Future[bool] | None = None
+    crash_reported = False
 
     def emergency_cleanup() -> None:
         """Run when the console window is closed, where `finally` never fires."""
@@ -131,9 +175,10 @@ async def run() -> int:
     on_console_close(emergency_cleanup)
 
     print(
-        f"Looptify — {cfg.hotkey} to arm/disarm. "
-        f"Ctrl+C or close this window to quit."
+        f"Looptify — {cfg.hotkey} to arm/disarm, {cfg.mode_hotkey} to change "
+        f"mode. Ctrl+C or close this window to quit."
     )
+    print(f"Mode: {MODE_LABELS[mode]}")
     print(f"Ad muting: {_describe_ad_detection(cfg)}")
     if not toaster.active and cfg.show_notifications:
         print("Notifications unavailable (tkinter could not start).")
@@ -141,22 +186,33 @@ async def run() -> int:
 
     # Starting armed is silent otherwise, which is when state matters most.
     if state.armed:
-        toaster.show(
-            "Looptify Activated",
-            "This song will loop before it ends.",
-            positive=True,
-        )
+        toaster.show("Looptify Activated", MODE_BLURBS[mode], positive=True)
 
     consecutive_errors = 0
 
     try:
         while True:
             try:
+                with state_lock:
+                    current = state
+                    active_mode = mode
+
+                # Once per session, the first time a playlist mode is active.
+                if active_mode is not Mode.LOOP and not flags_checked:
+                    flags_checked = True
+                    if await asyncio.to_thread(needs_relaunch):
+                        verb = "Restarting" if spotify_pids() else "Starting"
+                        toaster.show(
+                            f"{verb} Spotify",
+                            "Playlist modes need Spotify's page exposed.",
+                            positive=True,
+                        )
+                        result = await asyncio.to_thread(relaunch)
+                        print(f"\n[spotify] {result.message}")
+
                 snap = await monitor.snapshot()
 
                 if snap is None:
-                    with state_lock:
-                        current = state
                     sys.stdout.write(
                         "\r" + _status_line(current, None, None).ljust(110)
                     )
@@ -164,8 +220,6 @@ async def run() -> int:
                     await asyncio.sleep(cfg.poll_interval)
                     continue
 
-                with state_lock:
-                    current = state
                 decision = evaluate(
                     snap,
                     current,
@@ -205,12 +259,70 @@ async def run() -> int:
                     muted = False
                     print(f"\n[mute] ad over — unmuted {count} session(s)")
 
+                status = worker.status()
+                if status.crashed is not None and not crash_reported:
+                    crash_reported = True
+                    print(
+                        f"\n[warn] tracklist worker stopped ({status.crashed}) — "
+                        f"playlist modes will loop instead"
+                    )
+                # Disarmed or crashed: plan nothing, so the worker sits idle.
+                usable = current.armed and status.crashed is None
+                effective = active_mode if usable else Mode.LOOP
+                playing = None if decision.should_mute else (snap.title, snap.artist)
+
+                plan, actions = plan_step(
+                    plan,
+                    mode=effective,
+                    track=playing,
+                    page=status.page,
+                    located=status.located,
+                    rng=rng,
+                )
+                for action in actions:
+                    worker.send(action)
+
+                if press is not None and press.done():
+                    if not press.result():
+                        print("\n[next] couldn't press the row — looping instead")
+                        await monitor.loop_now()
+                        plan, actions = clear_press(plan)
+                        for action in actions:
+                            worker.send(action)
+                    press = None
+
+                if should_rescue(plan, playing, decision.remaining):
+                    print("\n[next] the pressed row never started — looping instead")
+                    await monitor.loop_now()
+                    plan, actions = clear_press(plan)
+                    for action in actions:
+                        worker.send(action)
+
                 if decision.fire_loop:
-                    method = await monitor.loop_now()
-                    print(f"\n[loop] restarted via {method}")
+                    if plan.target is not None and status.ready_row == plan.target:
+                        press = worker.press()
+                        plan = mark_pressed(plan)
+                        print(f"\n[next] playing row {plan.target}")
+                    else:
+                        reason = fallback_reason(plan, status.ready_row)
+                        if reason is not None:
+                            print(f"\n[next] {reason} — looping instead")
+                        method = await monitor.loop_now()
+                        print(f"\n[loop] restarted via {method}")
+                        # The same song again: let the random modes draw anew.
+                        plan, actions = rechoose(plan, rng)
+                        for action in actions:
+                            worker.send(action)
 
                 sys.stdout.write(
-                    "\r" + _status_line(current, snap, decision).ljust(110)
+                    "\r"
+                    + _status_line(
+                        current,
+                        snap,
+                        decision,
+                        effective,
+                        _mode_suffix(effective, plan, status.ready_row),
+                    ).ljust(110)
                 )
                 sys.stdout.flush()
                 consecutive_errors = 0
@@ -235,6 +347,7 @@ async def run() -> int:
     finally:
         if muted:
             set_spotify_muted(False)
+        worker.stop()
         listener.stop()
         toaster.stop()
         print("\nStopped.")
