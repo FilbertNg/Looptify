@@ -6,6 +6,9 @@ import tomllib
 from dataclasses import dataclass, fields, replace
 from pathlib import Path
 
+from looptify.hotkey import parse_hotkey
+from looptify.playlist import Mode
+
 
 @dataclass(frozen=True)
 class Config:
@@ -17,6 +20,8 @@ class Config:
     max_drift_seconds: float = 10.0
     poll_interval: float = 0.15
     hotkey: str = "ctrl+alt+l"
+    mode: Mode = Mode.LOOP
+    mode_hotkey: str = "ctrl+alt+m"
     start_armed: bool = True
     show_notifications: bool = True
     notification_seconds: float = 3.0
@@ -65,4 +70,20 @@ def load_config(path: Path | None = None) -> Config:
         if key in raw and raw[key] <= 0:
             raise ValueError(f"{key} must be greater than 0, got {raw[key]}")
 
-    return replace(Config(), **raw)
+    if "mode" in raw:
+        try:
+            raw["mode"] = Mode(raw["mode"])
+        except ValueError:
+            valid = ", ".join(m.value for m in Mode)
+            raise ValueError(
+                f"mode must be one of: {valid}. Got {raw['mode']!r}"
+            ) from None
+
+    cfg = replace(Config(), **raw)
+    # Two bindings for one key would make RegisterHotKey fail on the second.
+    if parse_hotkey(cfg.hotkey) == parse_hotkey(cfg.mode_hotkey):
+        raise ValueError(
+            f"hotkey and mode_hotkey must be different keys; both are "
+            f"{cfg.hotkey!r}"
+        )
+    return cfg
