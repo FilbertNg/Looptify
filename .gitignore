@@ -11,3 +11,4 @@ config.local.toml
 # Local build checklist, deliberately unpublished. The design record in
 # docs/design/ is the part that is useful to contributors.
 docs/design/*-implementation-plan.md
+brag-output/

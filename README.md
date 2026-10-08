@@ -14,25 +14,8 @@
 
 ---
 
-## Demo
+https://github.com/user-attachments/assets/fbf99fc7-da91-40ed-969a-80e6b1d9a19a
 
-<!--
-  Keep the URL below bare and on its own line with blank lines around it —
-  that is what makes GitHub render it as a video player. Don't wrap it in
-  markdown link syntax, and don't swap it for docs/assets/demo.mp4:
-  relative .mp4 paths don't play in a README.
--->
-
-https://github.com/user-attachments/assets/9acd9d54-cf90-491f-a1ac-6bf748493e27
-
-```console
-Looptify — ctrl+alt+l to arm/disarm. Ctrl+C or close this window to quit.
-Ad muting: ON — artist in ['Spotify'] or no album/track and under 60s
-
-[ARMED ] ▶ Steve Lacy - oh yeah?                    2:47/2:50  loop in   1.4s
-[loop] restarted via seek
-[ARMED ] ▶ Steve Lacy - oh yeah?                    0:01/2:50  loop in 169.0s
-```
 
 ## The problem
 
