@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/logo/looptify-logo.svg" alt="Looptify logo" width="112">
+
 # Looptify
 
 **Loops the current Spotify track just before it ends, so the post-track ad never fires.**
@@ -14,7 +16,7 @@
 
 ---
 
-https://github.com/user-attachments/assets/05e42b82-3e13-444a-b91b-5686c16889fb
+https://github.com/user-attachments/assets/c0a67dba-8f5a-4615-8655-16c990684084
 
 
 ## The problem
