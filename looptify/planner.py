@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, replace
+from typing import Literal
 
 from looptify.playlist import Mode, PageInfo, ShuffleBag, choose_next, update_bag
 
@@ -174,3 +175,59 @@ def fallback_reason(plan: Plan, ready_row: int | None) -> str | None:
     if ready_row != plan.target:
         return f"row {plan.target} isn't loaded yet (is Spotify minimized?)"
     return None
+
+
+SkipVerdict = Literal["press", "wait", "drop"]
+
+
+def skip_refusal(armed: bool, mode: Mode, plan: Plan) -> str | None:
+    """Why a skip can't even be queued right now, if it can't.
+
+    `mode` is the chosen mode; `plan.mode` is the one in effect, which is Loop
+    when the tracklist worker has stopped.
+    """
+    if not armed:
+        return "Looptify is deactivated."
+    if mode is Mode.LOOP:
+        return "Skipping works in In Order, Shuffle Loop and Pure Random."
+    if plan.mode is Mode.LOOP:
+        return "Playlist modes are unavailable this session."
+    if plan.track is None:
+        return "Nothing is playing that can be skipped."
+    if plan.page is None:
+        return "Open the playlist you're playing from in Spotify."
+    if plan.page.count <= 1:
+        return "The open playlist has only one song."
+    return None
+
+
+def prepare_skip(plan: Plan, rng: random.Random) -> tuple[Plan, list[Action]]:
+    """Make sure a skip has another row to go to.
+
+    Only Pure Random can choose to repeat the current song while the list
+    holds others, and a skip means moving on, so draw again from the rest.
+    """
+    if _idle(plan) or plan.locating or plan.target is not None:
+        return plan, []
+    assert plan.page is not None
+    others = [row for row in range(1, plan.page.count + 1) if row != plan.current_row]
+    if not others:
+        return plan, []
+    target = rng.choice(others)
+    return replace(plan, target=target), [Prepare(target)]
+
+
+def skip_verdict(plan: Plan, skipping: TrackKey, ready_row: int | None) -> SkipVerdict:
+    """What to do with a pending skip of `skipping` this poll."""
+    if _idle(plan) or plan.track != skipping or plan.pressed_row is not None:
+        return "drop"  # the song moved on, or the mode or page went away
+    if plan.target is None:
+        return "wait" if plan.locating else "drop"
+    return "press" if ready_row == plan.target else "wait"
+
+
+def skip_wait_reason(plan: Plan) -> str:
+    """What a pending skip is waiting for, for the notification."""
+    if plan.target is None:
+        return "Will skip once the playing song is found in the list."
+    return f"Will skip once row {plan.target} is loaded."

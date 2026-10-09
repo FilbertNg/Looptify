@@ -57,6 +57,7 @@ console window open; Looptify works in the background and doesn't need focus.
 |---|---|
 | **Ctrl+Alt+L** | Arm or disarm |
 | **Ctrl+Alt+Shift+L** | Change mode |
+| **Ctrl+Alt+N** | Skip to the next song (In Order, Shuffle Loop and Pure Random) |
 | **Ctrl+C**, or close the window | Quit |
 
 A notification appears in the corner of the screen whenever you arm, disarm or change
@@ -73,6 +74,11 @@ mode. When disarmed, Looptify only watches and songs play out normally.
 
 Press **Ctrl+Alt+Shift+L** to switch modes, or set `mode` in `config.toml` to choose the
 mode Looptify starts in.
+
+In In Order, Shuffle Loop and Pure Random, press **Ctrl+Alt+N** to move on to the next
+song straight away. Looptify scrolls to the next song while the current one plays, so it's
+usually ready. If it isn't yet, a notification says so, and the song changes as soon as
+it is.
 
 ### Using In Order, Shuffle Loop or Pure Random
 
@@ -104,7 +110,8 @@ itself; delete a line to use its default. The ones you're most likely to change:
 |---|---|---|
 | `mode` | `"loop"` | Mode at startup: `"loop"`, `"in_order"`, `"shuffle_loop"` or `"pure_random"` |
 | `hotkey` | `"ctrl+alt+l"` | Arm/disarm shortcut. Modifiers: `ctrl`, `alt`, `shift`, `win` |
-| `mode_hotkey` | `"ctrl+alt+shift+l"` | Change-mode shortcut. Must differ from `hotkey` |
+| `mode_hotkey` | `"ctrl+alt+shift+l"` | Change-mode shortcut |
+| `skip_hotkey` | `"ctrl+alt+n"` | Skip-to-next shortcut. All three shortcuts must differ |
 | `start_armed` | `true` | Start armed when Looptify opens |
 | `show_notifications` | `true` | Show the on-screen notifications |
 | `notification_seconds` | `3.0` | How long a notification stays on screen |
@@ -118,7 +125,7 @@ Timing and ad-detection settings are covered in
 | Problem | Solution |
 |---|---|
 | The console keeps showing `waiting for Spotify...` | Play a song in Spotify. Spotify only becomes visible to Looptify once something has played. |
-| `Could not register hotkey` | Another app already uses that shortcut. Choose a different `hotkey` or `mode_hotkey` in `config.toml`. |
+| `Could not register hotkey` | Another app already uses that shortcut. Choose a different `hotkey`, `mode_hotkey` or `skip_hotkey` in `config.toml`. |
 | An ad still played | Increase `lead_seconds` to `2.5`. If Crossfade is on in Spotify's playback settings, set `lead_seconds` higher than the crossfade length. |
 | Songs end noticeably early | Decrease `lead_seconds` towards `1.0`. |
 | A playlist mode keeps repeating the same song | Open the playlist you're playing from in Spotify, and restore Spotify if it's minimized. If you restarted Spotify yourself, restart Looptify too. |

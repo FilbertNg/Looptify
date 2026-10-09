@@ -107,6 +107,12 @@ second per screen of rows. Looptify therefore works ahead:
    re-checking it, because rows are rebuilt whenever the list re-renders.
 4. At the 1.5-second mark, Looptify presses the row's play button.
 
+The skip shortcut presses the same prepared row early. If the row isn't ready yet,
+because Looptify is still finding the playing song or scrolling to the next one, the
+skip waits and happens as soon as it is. It's cancelled if the song changes, the mode
+switches to Loop, or Spotify leaves the playlist page first. In Pure Random, a skip
+never lands on the song that's playing.
+
 Scrolling uses `ScrollItemPattern.ScrollIntoView`, one screen per step.
 `ScrollPattern.SetScrollPercent` and `ScrollPattern.Scroll` are never used, because both
 bring Spotify to the front.

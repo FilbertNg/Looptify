@@ -9,8 +9,12 @@ from looptify.planner import (
     clear_press,
     fallback_reason,
     mark_pressed,
+    prepare_skip,
     rechoose,
     should_rescue,
+    skip_refusal,
+    skip_verdict,
+    skip_wait_reason,
     step,
 )
 from looptify.playlist import Mode, PageInfo
@@ -217,3 +221,55 @@ def test_fallback_reasons():
     assert fallback_reason(plan, 5) is None
     looping, _ = located_plan(4, mode=Mode.PURE_RANDOM, rng=FixedRng(4))
     assert fallback_reason(looping, None) is None
+
+
+def test_skip_refusals():
+    plan, _ = located_plan(4)
+    assert skip_refusal(True, Mode.IN_ORDER, plan) is None
+    assert "deactivated" in skip_refusal(False, Mode.IN_ORDER, plan)
+    assert "Shuffle Loop" in skip_refusal(True, Mode.LOOP, run(mode=Mode.LOOP)[0])
+    crashed, _ = run(plan, mode=Mode.LOOP)
+    assert "unavailable" in skip_refusal(True, Mode.IN_ORDER, crashed)
+    assert "Nothing" in skip_refusal(True, Mode.IN_ORDER, run(track=None)[0])
+    assert "playlist" in skip_refusal(True, Mode.IN_ORDER, run(page=None)[0])
+    one, _ = run(page=PageInfo("One", 1))
+    assert "only one" in skip_refusal(True, Mode.IN_ORDER, one)
+
+
+def test_a_skip_presses_once_the_next_row_is_ready():
+    plan, _ = located_plan(4)
+    assert skip_verdict(plan, SONG_A, None) == "wait"
+    assert skip_verdict(plan, SONG_A, 3) == "wait"
+    assert skip_verdict(plan, SONG_A, 5) == "press"
+
+
+def test_a_skip_waits_while_the_playing_song_is_located():
+    plan, _ = run()
+    assert skip_verdict(plan, SONG_A, None) == "wait"
+    assert "found" in skip_wait_reason(plan)
+    plan, _ = located_plan(4)
+    assert "row 5" in skip_wait_reason(plan)
+
+
+def test_a_skip_is_dropped_once_the_song_moves_on():
+    plan, _ = located_plan(4)
+    assert skip_verdict(plan, SONG_B, 5) == "drop"
+    assert skip_verdict(mark_pressed(plan), SONG_A, 5) == "drop"
+    looping, _ = run(plan, mode=Mode.LOOP)
+    assert skip_verdict(looping, SONG_A, None) == "drop"
+    no_page, _ = run(plan, page=None)
+    assert skip_verdict(no_page, SONG_A, None) == "drop"
+
+
+def test_a_skip_in_pure_random_never_lands_on_the_current_song():
+    plan, _ = located_plan(4, mode=Mode.PURE_RANDOM, rng=FixedRng(4))
+    assert plan.target is None
+    skipped, actions = prepare_skip(plan, FixedRng(4))
+    assert skipped.target not in (None, 4) and actions == [Prepare(skipped.target)]
+
+
+def test_prepare_skip_leaves_a_lined_up_row_alone():
+    plan, _ = located_plan(4)
+    assert prepare_skip(plan, random.Random(0)) == (plan, [])
+    locating, _ = run()
+    assert prepare_skip(locating, random.Random(0)) == (locating, [])

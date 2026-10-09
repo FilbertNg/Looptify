@@ -20,11 +20,16 @@ from looptify.logic import Decision, LooperState, evaluate
 from looptify.models import Snapshot
 from looptify.planner import (
     Plan,
+    TrackKey,
     clear_press,
     fallback_reason,
     mark_pressed,
+    prepare_skip,
     rechoose,
     should_rescue,
+    skip_refusal,
+    skip_verdict,
+    skip_wait_reason,
 )
 from looptify.planner import step as plan_step
 from looptify.playlist import MODE_BLURBS, MODE_LABELS, Mode, next_mode
@@ -108,6 +113,7 @@ async def run() -> int:
 
     state = LooperState(armed=cfg.start_armed)
     mode = cfg.mode
+    skip_requested = False
     state_lock = threading.Lock()
 
     toaster = ToastNotifier(
@@ -144,8 +150,19 @@ async def run() -> int:
             f"Mode: {MODE_LABELS[mode_now]}", MODE_BLURBS[mode_now], positive=True
         )
 
+    def request_skip() -> None:
+        nonlocal skip_requested
+        with state_lock:
+            skip_requested = True
+
     try:
-        listener = HotkeyListener({cfg.hotkey: toggle, cfg.mode_hotkey: cycle_mode})
+        listener = HotkeyListener(
+            {
+                cfg.hotkey: toggle,
+                cfg.mode_hotkey: cycle_mode,
+                cfg.skip_hotkey: request_skip,
+            }
+        )
         listener.start()
     except (RuntimeError, ValueError) as exc:
         print(f"Hotkey error: {exc}", file=sys.stderr)
@@ -168,6 +185,8 @@ async def run() -> int:
     rng = random.Random()
     flags_checked = False
     press: Future[bool] | None = None
+    press_is_skip = False
+    skipping: TrackKey | None = None  # the song a pending skip will leave
     crash_reported = False
 
     def emergency_cleanup() -> None:
@@ -180,7 +199,7 @@ async def run() -> int:
 
     print(
         f"Looptify — {cfg.hotkey} to arm/disarm, {cfg.mode_hotkey} to change "
-        f"mode. Ctrl+C or close this window to quit."
+        f"mode, {cfg.skip_hotkey} to skip. Ctrl+C or close this window to quit."
     )
     print(f"Mode: {MODE_LABELS[mode]}")
     print(f"Ad muting: {_describe_ad_detection(cfg)}")
@@ -200,6 +219,7 @@ async def run() -> int:
                 with state_lock:
                     current = state
                     active_mode = mode
+                    skip_now, skip_requested = skip_requested, False
 
                 # Once per session, the first time a playlist mode is active.
                 if active_mode is not Mode.LOOP and not flags_checked:
@@ -217,6 +237,12 @@ async def run() -> int:
                 snap = await monitor.snapshot()
 
                 if snap is None:
+                    if skip_now:
+                        toaster.show(
+                            "Can't skip",
+                            "Nothing is playing that can be skipped.",
+                            positive=False,
+                        )
                     sys.stdout.write(
                         "\r" + _status_line(current, None, None).ljust(110)
                     )
@@ -288,8 +314,16 @@ async def run() -> int:
 
                 if press is not None and press.done():
                     if not press.result():
-                        print("\n[next] couldn't press the row — looping instead")
-                        await monitor.loop_now()
+                        if press_is_skip:
+                            print("\n[skip] couldn't press the row")
+                            toaster.show(
+                                "Couldn't skip",
+                                "Spotify didn't take the press. Try again.",
+                                positive=False,
+                            )
+                        else:
+                            print("\n[next] couldn't press the row — looping instead")
+                            await monitor.loop_now()
                         plan, actions = clear_press(plan)
                         for action in actions:
                             worker.send(action)
@@ -302,9 +336,12 @@ async def run() -> int:
                     for action in actions:
                         worker.send(action)
 
-                if decision.fire_loop:
+                if decision.fire_loop and plan.pressed_row is not None:
+                    pass  # a skip already pressed the next row; the rescue covers it
+                elif decision.fire_loop:
                     if plan.target is not None and status.ready_row == plan.target:
                         press = worker.press()
+                        press_is_skip = False
                         plan = mark_pressed(plan)
                         print(f"\n[next] playing row {plan.target}")
                     else:
@@ -318,6 +355,41 @@ async def run() -> int:
                         for action in actions:
                             worker.send(action)
 
+                if skip_now and skipping is None:
+                    refusal = skip_refusal(current.armed, active_mode, plan)
+                    if plan.pressed_row is not None:
+                        print("\n[skip] already moving to the next song")
+                    elif refusal is not None:
+                        toaster.show("Can't skip", refusal, positive=False)
+                    else:
+                        skipping = plan.track
+
+                if skipping is not None:
+                    plan, actions = prepare_skip(plan, rng)
+                    for action in actions:
+                        worker.send(action)
+                    verdict = skip_verdict(plan, skipping, status.ready_row)
+                    if verdict == "press":
+                        skipping = None
+                        press = worker.press()
+                        press_is_skip = True
+                        plan = mark_pressed(plan)
+                        print(f"\n[skip] playing row {plan.target}")
+                    elif verdict == "drop":
+                        skipping = None
+                        print(
+                            "\n[skip] cancelled — the song, mode or open page "
+                            "changed first"
+                        )
+                    elif skip_now:
+                        reason = skip_wait_reason(plan)
+                        toaster.show("Finding the next song", reason, positive=True)
+                        print(f"\n[skip] {reason}")
+
+                suffix = _mode_suffix(effective, plan, status.ready_row)
+                if skipping is not None:
+                    suffix += " ⏭"
+
                 sys.stdout.write(
                     "\r"
                     + _status_line(
@@ -325,7 +397,7 @@ async def run() -> int:
                         snap,
                         decision,
                         effective,
-                        _mode_suffix(effective, plan, status.ready_row),
+                        suffix,
                     ).ljust(110)
                 )
                 sys.stdout.flush()

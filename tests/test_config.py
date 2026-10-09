@@ -76,6 +76,7 @@ def test_playlist_mode_defaults():
     cfg = Config()
     assert cfg.mode is Mode.LOOP
     assert cfg.mode_hotkey == "ctrl+alt+shift+l"
+    assert cfg.skip_hotkey == "ctrl+alt+n"
 
 
 def test_loads_mode(tmp_path: Path):
@@ -95,4 +96,11 @@ def test_mode_hotkey_must_differ_from_hotkey(tmp_path: Path):
     p = tmp_path / "config.toml"
     p.write_text('mode_hotkey = "Alt+Ctrl+L"\n', encoding="utf-8")
     with pytest.raises(ValueError, match="must be different"):
+        load_config(p)
+
+
+def test_skip_hotkey_must_differ_from_the_others(tmp_path: Path):
+    p = tmp_path / "config.toml"
+    p.write_text('skip_hotkey = "ctrl+alt+shift+L"\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="mode_hotkey and skip_hotkey"):
         load_config(p)
