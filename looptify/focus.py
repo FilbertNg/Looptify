@@ -7,9 +7,12 @@ fail, and another process's window can't be DWM-cloaked. Two things do work:
 - Taking focus straight back. A zero-distance SendInput makes Looptify the
   last-input process, which Windows allows to set the foreground. Measured at
   4-12 ms on 2026-10-09.
-- Giving Spotify's window an empty region for the moment of the press, so being
-  raised to the top shows nothing. Without it, Spotify visibly flashes on
-  screen; with it, the user saw nothing (2026-10-09).
+- Cutting Spotify's window down, for the moment of the press, to the part
+  already on screen, so being raised to the top shows nothing new. Without
+  it, Spotify visibly flashes on screen; with it, the user saw nothing
+  (2026-10-09). Covered entirely, the window is cut to nothing. An empty
+  region regardless blacked out every part of Spotify showing around a
+  smaller window in front, such as the Looptify console (2026-10-09).
 """
 
 from __future__ import annotations
@@ -17,7 +20,8 @@ from __future__ import annotations
 import ctypes
 import threading
 import time
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Iterable, Iterator, Sequence
+from contextlib import contextmanager
 from ctypes import wintypes
 
 import pywintypes
@@ -34,9 +38,18 @@ HIDE_SECONDS = 0.8
 _RETRY_SECONDS = 0.02
 _INPUT_MOUSE = 0
 _MOUSEEVENTF_MOVE = 0x0001
+_DWMWA_EXTENDED_FRAME_BOUNDS = 9
+_DWMWA_CLOAKED = 14
+_DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
+_RGN_DIFF = 4
 
 _user32 = ctypes.windll.user32
 _gdi32 = ctypes.windll.gdi32
+_dwmapi = ctypes.windll.dwmapi
+_user32.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+_user32.SetThreadDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+
+Rect = tuple[int, int, int, int]  # left, top, right, bottom
 
 
 class _MouseInput(ctypes.Structure):
@@ -97,6 +110,74 @@ def restack_anchor(above: Sequence[tuple[int, bool]]) -> int | None:
     return None
 
 
+def visible_part(
+    window: Rect, frame: Rect, covers: Iterable[Rect]
+) -> tuple[Rect, list[Rect]]:
+    """The part of a window on screen, as a region: (keep, minus each cutout).
+
+    `window` is its full rect, `frame` the part DWM actually draws (without
+    the invisible resize border), and `covers` the windows above it, all in
+    screen coordinates. Regions are relative to the window's rect, so the
+    results are too.
+    """
+    left, top, _, _ = window
+
+    def local(rect: Rect) -> Rect:
+        return (rect[0] - left, rect[1] - top, rect[2] - left, rect[3] - top)
+
+    fl, ft, fr, fb = frame
+    cutouts = []
+    for cl, ct, cr, cb in covers:
+        cl, ct, cr, cb = max(cl, fl), max(ct, ft), min(cr, fr), min(cb, fb)
+        if cl < cr and ct < cb:
+            cutouts.append(local((cl, ct, cr, cb)))
+    return local(frame), cutouts
+
+
+@contextmanager
+def _physical_pixels() -> Iterator[None]:
+    """Work in physical pixels on this thread; Looptify isn't DPI-aware."""
+    previous = _user32.SetThreadDpiAwarenessContext(
+        _DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+    )
+    try:
+        yield
+    finally:
+        if previous:
+            _user32.SetThreadDpiAwarenessContext(previous)
+
+
+def _frame(hwnd: int) -> Rect:
+    """The window's drawn bounds, without the invisible resize border."""
+    rect = wintypes.RECT()
+    if _dwmapi.DwmGetWindowAttribute(
+        hwnd, _DWMWA_EXTENDED_FRAME_BOUNDS, ctypes.byref(rect), ctypes.sizeof(rect)
+    ):
+        return win32gui.GetWindowRect(hwnd)  # nonzero HRESULT: DWM can't say
+    return (rect.left, rect.top, rect.right, rect.bottom)
+
+
+def _covers(hwnd: int) -> bool:
+    """Whether a window above Spotify hides what's beneath it.
+
+    Hidden, minimized and cloaked windows cover nothing, and neither do
+    click-through layered windows, which are overlays. Any other window
+    counts as covering, even if it's partly see-through: wrongly counting it
+    leaves a few pixels dark for a moment, but wrongly not counting it would
+    let Spotify flash over the user's app.
+    """
+    if not win32gui.IsWindowVisible(hwnd) or win32gui.IsIconic(hwnd):
+        return False
+    overlay = win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT
+    if win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE) & overlay == overlay:
+        return False
+    cloaked = wintypes.DWORD()
+    _dwmapi.DwmGetWindowAttribute(
+        hwnd, _DWMWA_CLOAKED, ctypes.byref(cloaked), ctypes.sizeof(cloaked)
+    )
+    return not cloaked.value
+
+
 def _pid(hwnd: int) -> int:
     return win32process.GetWindowThreadProcessId(hwnd)[1] if hwnd else 0
 
@@ -129,8 +210,31 @@ def _has_region(hwnd: int) -> bool:
 
 
 def _hide(hwnd: int) -> bool:
-    """Give the window an empty region: it stays put and keeps rendering, unseen."""
+    """Cut the window down to what's already on screen, so raising it shows nothing.
+
+    It stays put and keeps rendering. Fully covered, the region is empty, and
+    so is it if the windows above can't be measured: a moment of dark beats
+    Spotify flashing over the user's app.
+    """
     region = _gdi32.CreateRectRgn(0, 0, 0, 0)
+    try:
+        with _physical_pixels():
+            covers = []
+            above = win32gui.GetWindow(hwnd, win32con.GW_HWNDPREV)
+            while above:
+                if _covers(above):
+                    covers.append(_frame(above))
+                above = win32gui.GetWindow(above, win32con.GW_HWNDPREV)
+            keep, cutouts = visible_part(
+                win32gui.GetWindowRect(hwnd), _frame(hwnd), covers
+            )
+            _gdi32.SetRectRgn(region, *keep)
+            for cutout in cutouts:
+                hole = _gdi32.CreateRectRgn(*cutout)
+                _gdi32.CombineRgn(region, region, hole, _RGN_DIFF)
+                _gdi32.DeleteObject(hole)
+    except pywintypes.error:
+        _gdi32.SetRectRgn(region, 0, 0, 0, 0)
     if _user32.SetWindowRgn(hwnd, region, False):
         return True  # the system owns the region now
     _gdi32.DeleteObject(region)

@@ -1,4 +1,4 @@
-from looptify.focus import restack_anchor, should_hide, should_reclaim
+from looptify.focus import restack_anchor, should_hide, should_reclaim, visible_part
 
 SPOTIFY = {100, 101}
 
@@ -66,3 +66,31 @@ def test_restack_anchor_skips_always_on_top_windows():
 def test_restack_anchor_none_when_nothing_ordinary_is_above():
     assert restack_anchor([(5, True)]) is None
     assert restack_anchor([]) is None
+
+
+# Spotify maximized at 200% scale: its rect overhangs the screen by the
+# invisible resize border, its frame is what DWM draws.
+WINDOW = (-13, -13, 2573, 1517)
+FRAME = (0, 0, 2560, 1505)
+
+
+def test_a_covered_window_is_cut_to_nothing():
+    keep, cutouts = visible_part(WINDOW, FRAME, [(0, 0, 2560, 1504), (0, 1504, 2560, 1600)])
+    assert keep == (13, 13, 2573, 1518)
+    assert cutouts == [(13, 13, 2573, 1517), (13, 1517, 2573, 1518)]
+
+
+def test_a_smaller_window_in_front_is_cut_out_and_the_rest_kept():
+    keep, cutouts = visible_part(WINDOW, FRAME, [(63, 408, 2468, 967)])
+    assert keep == (13, 13, 2573, 1518)
+    assert cutouts == [(76, 421, 2481, 980)]
+
+
+def test_windows_off_to_the_side_cut_nothing():
+    _, cutouts = visible_part(WINDOW, FRAME, [(2600, 0, 3000, 500), (0, 1505, 100, 1600)])
+    assert cutouts == []
+
+
+def test_the_invisible_border_is_never_kept():
+    keep, _ = visible_part((90, 90, 510, 410), (100, 100, 500, 400), [])
+    assert keep == (10, 10, 410, 310)

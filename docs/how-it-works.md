@@ -124,9 +124,15 @@ prevent that. Disabling its windows and `LockSetForegroundWindow` both proved in
 and Windows doesn't allow one app to DWM-cloak another app's window. Looptify limits the
 effect in two ways:
 
-- **Hiding the window.** For the moment of the press, Spotify's window is given an empty
-  window region. It stays in place and keeps rendering, but covers no pixels, so being
-  raised to the front shows nothing. About 0.8 seconds later the region is removed and
+- **Hiding the window.** For the moment of the press, Spotify's window is given a window
+  region covering only the part of it already on screen: its own frame, minus every
+  window above it. It stays in place and keeps rendering, so being raised to the front
+  shows nothing new. When other windows cover it completely the region is empty; when a
+  smaller window sits in front, the parts of Spotify around it stay visible instead of
+  going black. Windows that are hidden, minimized, cloaked or click-through overlays
+  don't count as covering it. Any other window does, even a partly see-through one, so a
+  mistake can only leave a few pixels dark, never show Spotify over another app. About
+  0.8 seconds later the region is removed and
   Spotify is put back at its original place in the window stack. Spotify isn't hidden
   when it's minimized (nothing would show) or when it's the window in use (hiding it would
   itself cause a flicker). If Looptify is killed mid-press, it clears the region on its
