@@ -22,6 +22,7 @@ class Config:
     hotkey: str = "ctrl+alt+l"
     mode: Mode = Mode.LOOP
     mode_hotkey: str = "ctrl+alt+shift+l"
+    skip_hotkey: str = "ctrl+alt+n"
     start_armed: bool = True
     show_notifications: bool = True
     notification_seconds: float = 3.0
@@ -81,9 +82,14 @@ def load_config(path: Path | None = None) -> Config:
 
     cfg = replace(Config(), **raw)
     # Two bindings for one key would make RegisterHotKey fail on the second.
-    if parse_hotkey(cfg.hotkey) == parse_hotkey(cfg.mode_hotkey):
-        raise ValueError(
-            f"hotkey and mode_hotkey must be different keys; both are "
-            f"{cfg.hotkey!r}"
-        )
+    seen: dict[tuple[int, int], str] = {}
+    for name in ("hotkey", "mode_hotkey", "skip_hotkey"):
+        spec = getattr(cfg, name)
+        key = parse_hotkey(spec)
+        if key in seen:
+            raise ValueError(
+                f"{seen[key]} and {name} must be different keys; both are "
+                f"{spec!r}"
+            )
+        seen[key] = name
     return cfg

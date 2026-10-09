@@ -40,6 +40,13 @@ mode = "loop"
 # Global hotkey that cycles loop -> in_order -> shuffle_loop -> pure_random.
 mode_hotkey = "ctrl+alt+shift+l"
 
+# Global hotkey that skips to the next song right away, in the playlist modes.
+# Like the change at the end of a song, it presses the next row's play button
+# in the open playlist; Spotify's Next button is never used. If that row is
+# still being scrolled to, a notification says so and the skip happens as soon
+# as it's ready.
+skip_hotkey = "ctrl+alt+n"
+
 # Start already armed, so opening Looptify immediately loops whatever is
 # playing. Set to false if you would rather arm it yourself each time.
 start_armed = true
